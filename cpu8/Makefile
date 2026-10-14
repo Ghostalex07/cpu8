@@ -176,7 +176,7 @@ $(VL_DIR)/Vcpu_sim: $(TB_DIR)/verilator/sim_main.cpp $(TB_DIR)/verilator/cpu_sim
 	$(VERILATOR) --cc --exe --build -j -O3 \
 	  --top-module cpu_sim -Wno-UNOPTFLAT \
 	  -Mdir $(VL_DIR) \
-	  $(TB_DIR)/verilator/sim_main.cpp $(TB_DIR)/verilator/cpu_sim.v $(RTL_DIR)/*.v
+	  $(CURDIR)/$(TB_DIR)/verilator/sim_main.cpp $(CURDIR)/$(TB_DIR)/verilator/cpu_sim.v $(CURDIR)/$(RTL_DIR)/*.v
 
 verilator: dirs $(VL_DIR)/Vcpu_sim
 	@set -e; \
