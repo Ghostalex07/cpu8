@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
-"""Generador de programas aleatorios *validos* para cpu8.
+"""Generator of *valid* random programs for cpu8.
 
-Se usa en el harness de regresion (`tools/regress.py`) y en los tests para el
-fuzz de ida y vuelta del ensamblador/desensamblador: la fuente generada se
-ensambla, se desensambla y se vuelve a ensamblar, y los bytes deben coincidir.
+Used in the regression harness (`tools/regress.py`) and in the tests for the
+assembler/disassembler round-trip fuzz: the generated source is assembled,
+disassembled and assembled again, and the bytes must match.
 
-El generador solo produce instrucciones con sintaxis valida y, en los saltos,
-direcciones que caen en el inicio de *alguna* instruccion del propio programa
-(para que el desensamblador pueda etiquetarlas y el reensamblado resuelva).
+The generator only produces instructions with valid syntax and, for jumps,
+addresses that fall at the start of *some* instruction of the program itself
+(so that the disassembler can label them and the reassembly can resolve them).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ from __future__ import annotations
 import random
 
 REGISTROS = ("A", "B", "C", "D")
-BASES_INDEXADO = ("B", "C", "D")   # A (rs=00) codifica el modo absoluto
+BASES_INDEXADO = ("B", "C", "D")   # A (rs=00) encodes absolute mode
 _ALU = ("ADD", "SUB", "AND", "OR", "XOR", "CMP")
 _INMEDIATOS = ("LDI", "ADDI", "SUBI", "CMPI")
 _DESPLAZAMIENTOS = ("SHL", "SHR")
@@ -25,7 +25,7 @@ _SIN_OPERANDO = ("EI", "DI", "RET", "HLT")
 
 
 def _longitud(linea: str) -> int:
-    """Bytes que ocupara la linea (misma regla que el ensamblador)."""
+    """Bytes that the line will occupy (same rule as the assembler)."""
     mnem = linea.split()[0].upper()
     if mnem in ("LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL",
                 "MUL", "DIV") or mnem in _SALTOS:
@@ -36,7 +36,7 @@ def _longitud(linea: str) -> int:
 
 
 def generar_fuente(rng: random.Random, n: int) -> str:
-    """Devuelve el texto de un programa aleatorio de ``n`` instrucciones."""
+    """Returns the text of a random program with ``n`` instructions."""
     lineas: list[str] = []
     direccion = 0
     inicios: list[int] = []
@@ -44,9 +44,9 @@ def generar_fuente(rng: random.Random, n: int) -> str:
         inicios.append(direccion)
         lineas.append(_linea_aleatoria(rng))
         direccion += _longitud(lineas[-1])
-    # Sustituye los marcadores de salto por direcciones validas (inicio de
-    # instruccion).  Se hace en una 2a pasada porque las longitudes no dependen
-    # del destino del salto.
+    # Replaces the jump placeholders with valid addresses (start of an
+    # instruction).  Done in a 2nd pass because the lengths do not depend on
+    # the jump target.
     if inicios:
         for k, ln in enumerate(lineas):
             if "{T}" in ln:
@@ -72,7 +72,7 @@ def _linea_aleatoria(rng: random.Random) -> str:
     if k == 5:
         return f"{rng.choice(_DESPLAZAMIENTOS)} {r}"
     if k == 6:
-        # LD/ST en sus tres formas: absoluta, indexada e indirecta.
+        # LD/ST in its three forms: absolute, indexed and indirect.
         m = rng.choice(("LD", "ST"))
         forma = rng.randrange(3)
         if forma == 0:
@@ -95,6 +95,6 @@ def _linea_aleatoria(rng: random.Random) -> str:
     if k == 10:
         return f"{rng.choice(_SIN_OPERANDO)}"
     if k == 11:
-        return f"{rng.choice(_SALTOS)} {{T}}"   # destino resuelto en 2a pasada
-    # NOP (se codifica como MOV A, A) para variar.
+        return f"{rng.choice(_SALTOS)} {{T}}"   # target resolved in 2nd pass
+    # NOP (encoded as MOV A, A) for variety.
     return "NOP"

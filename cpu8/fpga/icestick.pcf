@@ -1,8 +1,8 @@
 # ============================================================================
-#  icestick.pcf - Restricciones de pines para la iCEstick (iCE40HX1K, TQ144)
+#  icestick.pcf - Pin constraints for the iCEstick (iCE40HX1K, TQ144)
 #
-#  Reloj de 12 MHz en el pin 21 y los 5 LEDs (D1..D5) en los pines 95..99.
-#  Sintesis:  make fpga
+#  12 MHz clock on pin 21 and the 5 LEDs (D1..D5) on pins 95..99.
+#  Synthesis:  make fpga
 # ============================================================================
 
 set_io clk 21

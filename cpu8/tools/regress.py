@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
-"""Harness de regresion de cpu8 (Fase 10).
+"""Regression harness for cpu8 (Fase 10).
 
-Comprueba que la CPU y las herramientas no cambian de comportamiento:
+Checks that the CPU and the tools do not change behaviour:
 
-1. **Bytes**: al ensamblar cada ``programs/*.asm`` se obtienen exactamente los
-   mismos bytes que la referencia dorada (``tools/golden/hex.sha256``).  Detecta
-   cualquier regresion en el codificador o en el analisis de etiquetas.
-2. **Traza**: la ejecucion de cada programa produce la misma traza (estado de
-   registros/flags despues de cada instruccion) que la dorada
-   (``tools/golden/traces/<nombre>.trace``).  Detecta cambios en el RTL aunque la
-   salida final no cambie.
-3. **Fuzz**: programas aleatorios validos se ensamblan, se desensamblan y se
-   vuelven a ensamblar; los bytes deben coincidir (ida y vuelta del
-   ensamblador/desensamblador).
+1. **Bytes**: assembling each ``programs/*.asm`` yields exactly the same bytes
+   as the golden reference (``tools/golden/hex.sha256``).  Detects any regression
+   in the encoder or in the label analysis.
+2. **Trace**: running each program produces the same trace (register/flag state
+   after each instruction) as the golden one
+   (``tools/golden/traces/<name>.trace``).  Detects changes in the RTL even if
+   the final output does not change.
+3. **Fuzz**: valid random programs are assembled, disassembled and assembled
+   again; the bytes must match (assembler/disassembler round-trip).
 
-Uso::
+Usage::
 
-    python3 tools/regress.py             # comprueba contra la referencia dorada
-    python3 tools/regress.py --update    # (re)genera la referencia dorada
-    python3 tools/regress.py --fuzz 500  # n.o de programas aleatorios (0 = ninguno)
+    python3 tools/regress.py             # checks against the golden reference
+    python3 tools/regress.py --update    # (re)generates the golden reference
+    python3 tools/regress.py --fuzz 500  # number of random programs (0 = none)
 
-El harness devuelve codigo de salida 0 si todo pasa y 1 si hay fallos, de modo
-que se puede usar en CI (``make regress``).
+The harness returns exit code 0 if everything passes and 1 if there are
+failures, so it can be used in CI (``make regress``).
 """
 
 from __future__ import annotations
@@ -42,8 +41,8 @@ import fuzz  # noqa: E402
 
 GOLDEN = RAIZ / "tools" / "golden"
 TRACES = GOLDEN / "traces"
-# irq.asm necesita la senal irq (la cubre `make irqtest`); con irq=0 su traza no
-# aporta, asi que se excluye de la comprobacion de traza (no de la de bytes).
+# irq.asm needs the irq signal (covered by `make irqtest`); with irq=0 its trace
+# adds nothing, so it is excluded from the trace check (not from the bytes one).
 TRACE_EXCLUIDOS = {"irq"}
 
 
@@ -74,12 +73,12 @@ def _traza(vvp: Path, stem: str) -> str:
     r = subprocess.run(
         ["vvp", str(vvp), f"+hex=programs/{stem}.hex"],
         cwd=RAIZ, capture_output=True, text=True, check=True)
-    # El runtime de iverilog imprime diagnosticos dependientes del entorno en
-    # stdout y NO deben formar parte de la traza dorada:
-    #   - 11.0: el aviso de $readmemh ("Not enough words ...") con la RUTA
-    #     ABSOLUTA del testbench.
-    #   - 12.0: "<ruta>:<linea>: $finish called at <tiempo> (1ps)".
-    # Ambos llevan rutas/tiempos que cambian entre maquinas y versiones.
+    # The iverilog runtime prints environment-dependent diagnostics to stdout
+    # and they must NOT be part of the golden trace:
+    #   - 11.0: the $readmemh warning ("Not enough words ...") with the ABSOLUTE
+    #     path of the testbench.
+    #   - 12.0: "<path>:<line>: $finish called at <time> (1ps)".
+    # Both carry paths/times that change between machines and versions.
     ruido = ("WARNING:", "$finish called at", "ERROR:", "$fatal")
     lineas = [ln for ln in r.stdout.splitlines()
               if not any(m in ln for m in ruido)]
@@ -95,37 +94,37 @@ def actualizar() -> int:
     for p in _programas():
         if p.stem not in TRACE_EXCLUIDOS:
             (TRACES / f"{p.stem}.trace").write_text(_traza(vvp, p.stem))
-    print(f"Referencia dorada actualizada en {GOLDEN.relative_to(RAIZ)}/")
+    print(f"Golden reference updated in {GOLDEN.relative_to(RAIZ)}/")
     return 0
 
 
 def _comprobar_bytes() -> int:
     man = GOLDEN / "hex.sha256"
     if not man.exists():
-        print(f"FALTA {man.relative_to(RAIZ)} (ejecuta `make regress-update`)")
+        print(f"MISSING {man.relative_to(RAIZ)} (run `make regress-update`)")
         return 1
     esperado = dict(ln.split() for ln in man.read_text().splitlines() if ln.strip())
     actual = _hex_actuales()
     fallos = 0
     for n in sorted(set(esperado) | set(actual)):
         if esperado.get(n) != actual.get(n):
-            print(f"  FALLO bytes {n}: {esperado.get(n)} != {actual.get(n)}")
+            print(f"  BYTES FAIL {n}: {esperado.get(n)} != {actual.get(n)}")
             fallos += 1
-    print(f"  bytes: {len(actual)} programas, {fallos} fallos")
+    print(f"  bytes: {len(actual)} programs, {fallos} failures")
     return fallos
 
 
 def _primera_diferencia(esperado: str, actual: str) -> str:
-    """Descripcion de la primera linea que difiere, con repr (ve espacios)."""
+    """Description of the first line that differs, with repr (shows spaces)."""
     ea, aa = esperado.splitlines(), actual.splitlines()
     for i in range(max(len(ea), len(aa))):
-        le = ea[i] if i < len(ea) else "<falta>"
-        la = aa[i] if i < len(aa) else "<falta>"
+        le = ea[i] if i < len(ea) else "<missing>"
+        la = aa[i] if i < len(aa) else "<missing>"
         if le != la:
-            return (f"    linea {i + 1}:\n"
-                    f"      esperado: {le!r}\n"
+            return (f"    line {i + 1}:\n"
+                    f"      expected: {le!r}\n"
                     f"      actual  : {la!r}")
-    return "    (sin diferencias linea a linea)"
+    return "    (no line-by-line differences)"
 
 
 def _comprobar_trazas() -> int:
@@ -138,23 +137,23 @@ def _comprobar_trazas() -> int:
             continue
         g = TRACES / f"{p.stem}.trace"
         if not g.exists():
-            print(f"  FALTA traza dorada {g.relative_to(RAIZ)}")
+            print(f"  MISSING golden trace {g.relative_to(RAIZ)}")
             fallos += 1
             continue
         n += 1
         esperado = g.read_text()
         actual = _traza(vvp, p.stem)
         if actual != esperado:
-            print(f"  FALLO traza {p.stem} "
-                  f"(`make trace PROG=programs/{p.stem}` para inspeccionar)")
+            print(f"  TRACE FAIL {p.stem} "
+                  f"(`make trace PROG=programs/{p.stem}` to inspect)")
             print(_primera_diferencia(esperado, actual))
             dump.mkdir(parents=True, exist_ok=True)
             (dump / f"{p.stem}.expected.trace").write_text(esperado)
             (dump / f"{p.stem}.actual.trace").write_text(actual)
             fallos += 1
     if fallos:
-        print(f"  trazas volcadas en {dump.relative_to(RAIZ)}/ (expected/actual)")
-    print(f"  trazas: {n} programas, {fallos} fallos")
+        print(f"  traces dumped in {dump.relative_to(RAIZ)}/ (expected/actual)")
+    print(f"  traces: {n} programs, {fallos} failures")
     return fallos
 
 
@@ -167,14 +166,14 @@ def _comprobar_fuzz(cuenta: int) -> int:
             b1 = assembler.ensamblar(src)[0]
             b2 = assembler.ensamblar(
                 "\n".join(disasm.desensamblar_crudo(b1)) + "\n")[0]
-        except Exception as e:  # noqa: BLE001 (queremos ver cualquier fallo)
-            print(f"  FALLO fuzz #{i}: {e}\n{src}")
+        except Exception as e:  # noqa: BLE001 (we want to see any failure)
+            print(f"  FAIL fuzz #{i}: {e}\n{src}")
             fallos += 1
             continue
         if b1 != b2:
-            print(f"  FALLO fuzz #{i}: los bytes no coinciden\n{src}")
+            print(f"  FAIL fuzz #{i}: the bytes do not match\n{src}")
             fallos += 1
-    print(f"  fuzz ida/vuelta: {cuenta} programas, {fallos} fallos")
+    print(f"  fuzz round-trip: {cuenta} programs, {fallos} failures")
     return fallos
 
 
@@ -185,14 +184,14 @@ def main(argv: list[str]) -> int:
     fuzz_n = 200
     if "--fuzz" in args:
         fuzz_n = int(args[args.index("--fuzz") + 1])
-    print("=== regresion de cpu8 ===")
+    print("=== cpu8 regression ===")
     fallos = _comprobar_bytes() + _comprobar_trazas()
     if fuzz_n:
         fallos += _comprobar_fuzz(fuzz_n)
     if fallos:
-        print(f"REGRESION: {fallos} fallos")
+        print(f"REGRESSION: {fallos} failures")
         return 1
-    print("REGRESION: TODO OK")
+    print("REGRESSION: ALL OK")
     return 0
 
 

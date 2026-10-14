@@ -1,39 +1,40 @@
 ; ============================================================================
-;  primes.asm - Imprime los primos menores que 32 (division por tentativa)
+;  primes.asm - Prints the primes below 32 (trial division)
 ;
-;  Para cada n de 2 a 31 se comprueba si algun d (2..n-1) lo divide.  El resto
-;  se calcula como  n - (n/d)*d  usando las instrucciones DIV y MUL de hardware.
+;  For each n from 2 to 31 it checks whether some d (2..n-1) divides it.  The
+;  remainder is computed as  n - (n/d)*d  using the hardware DIV and MUL
+;  instructions.
 ;
-;  Celdas RAM: [NVAL], [DVAL], [LIM]  (0xF8..0xFA), libres porque este programa
-;  no usa la pila (SP arranca en 0xF0 y crece hacia abajo).
+;  RAM cells: [NVAL], [DVAL], [LIM]  (0xF8..0xFA), free because this program
+;  does not use the stack (SP starts at 0xF0 and grows downwards).
 ;
-;  Salida esperada (OUT): 02 03 05 07 0B 0D 11 13 17 1D 1F
+;  Expected output (OUT): 02 03 05 07 0B 0D 11 13 17 1D 1F
 ; ============================================================================
 
         .equ NVAL, 0xF8
         .equ DVAL, 0xF9
         .equ LIM,  0xFA
 
-inicio:
+start:
         LDI A, 2
         ST  A, [NVAL]           ; n = 2
         LDI A, 32
-        ST  A, [LIM]            ; limite = 32
+        ST  A, [LIM]            ; limit = 32
 
-bucle_n:
+loop_n:
         LD  A, [NVAL]
         LD  B, [LIM]
         CMP A, B
-        JC  fin                 ; n >= 32 -> fin
+        JC  end                 ; n >= 32 -> end
 
         LDI A, 2
         ST  A, [DVAL]           ; d = 2
 
-bucle_d:
+loop_d:
         LD  A, [DVAL]
         LD  B, [NVAL]
         CMP A, B
-        JC  es_primo            ; d >= n -> no hubo divisor -> primo
+        JC  is_prime            ; d >= n -> no divisor found -> prime
 
         LD  A, [NVAL]           ; A = n
         LD  B, [DVAL]           ; B = d
@@ -41,21 +42,21 @@ bucle_d:
         MUL A, B                ; A = (n/d) * d
         LD  B, [NVAL]           ; B = n
         CMP A, B
-        JZ  no_primo            ; (n/d)*d == n -> d divide a n
+        JZ  not_prime           ; (n/d)*d == n -> d divides n
 
         LD  A, [DVAL]           ; d++
         INC A
         ST  A, [DVAL]
-        JMP bucle_d
+        JMP loop_d
 
-es_primo:
+is_prime:
         LD  A, [NVAL]
-        OUT A                   ; n es primo
-no_primo:
+        OUT A                   ; n is prime
+not_prime:
         LD  A, [NVAL]           ; n++
         INC A
         ST  A, [NVAL]
-        JMP bucle_n
+        JMP loop_n
 
-fin:
+end:
         HLT

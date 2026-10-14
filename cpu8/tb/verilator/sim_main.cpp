@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------------------
-//  sim_main.cpp - banco de pruebas de cpu8 para Verilator (Fase 7.6)
+//  sim_main.cpp - cpu8 testbench for Verilator (Phase 7.6)
 //
-//  Genera el reloj, aplica el reset sincrono, deja que el envoltorio cpu_sim.v
-//  cargue el programa (+hex=<ruta>) y compara cada salida OUT con la lista
-//  esperada de +exp=<ruta>.  Con +irq=1 mantiene alta la peticion de
-//  interrupcion (para el programa irq.asm).
+//  Generates the clock, applies the synchronous reset, lets the cpu_sim.v
+//  wrapper load the program (+hex=<path>) and compares each OUT output with the
+//  expected list from +exp=<path>.  With +irq=1 it keeps the interrupt request
+//  high (for the irq.asm program).
 //
-//  Se compila y ejecuta con:  make verilator
+//  It is compiled and run with:  make verilator
 // ---------------------------------------------------------------------------
 #include "verilated.h"
 #include "Vcpu_sim.h"
@@ -15,13 +15,13 @@
 #include <cstring>
 #include <vector>
 
-static vluint64_t g_time = 0;                 // tiempo de simulacion (ns)
+static vluint64_t g_time = 0;                 // simulation time (ns)
 
-// Carga una lista de valores en hexadecimal (un valor por linea) desde `ruta`.
+// Loads a list of hexadecimal values (one value per line) from `ruta`.
 static std::vector<unsigned> cargar_ref(const char* ruta) {
     std::vector<unsigned> v;
     FILE* f = fopen(ruta, "r");
-    if (!f) { printf("No se puede abrir '%s'\n", ruta); return v; }
+    if (!f) { printf("Cannot open '%s'\n", ruta); return v; }
     unsigned x;
     while (fscanf(f, "%x", &x) == 1) v.push_back(x);
     fclose(f);
@@ -29,7 +29,7 @@ static std::vector<unsigned> cargar_ref(const char* ruta) {
 }
 
 int main(int argc, char** argv) {
-    Verilated::commandArgs(argc, argv);       // habilita $value$plusargs en el RTL
+    Verilated::commandArgs(argc, argv);       // enables $value$plusargs in the RTL
 
     const char* expfile = nullptr;
     bool usar_irq = false;
@@ -41,15 +41,15 @@ int main(int argc, char** argv) {
     std::vector<unsigned> esperadas;
     if (expfile) esperadas = cargar_ref(expfile);
 
-    Vcpu_sim* top = new Vcpu_sim;             // el RTL se evalua al construir
+    Vcpu_sim* top = new Vcpu_sim;             // the RTL is evaluated on construction
 
-    // Un ciclo de reloj = un flanco de subida (clk: 0 -> 1).
+    // One clock cycle = one rising edge (clk: 0 -> 1).
     auto tick = [&]() {
         top->clk = 0; top->eval(); g_time += 5;
         top->clk = 1; top->eval(); g_time += 5;
     };
 
-    // Reset sincrono: 2 ciclos con rst=1, luego se libera.
+    // Synchronous reset: 2 cycles with rst=1, then it is released.
     top->rst = 1;
     top->irq = 0;
     tick();
@@ -57,7 +57,7 @@ int main(int argc, char** argv) {
     top->rst = 0;
     top->irq = usar_irq ? 1 : 0;
 
-    // Ejecuta hasta HLT (o hasta agotar el tiempo de espera).
+    // Runs until HLT (or until the wait time is exhausted).
     int nout = 0;
     int errores = 0;
     bool timeout = false;
@@ -69,11 +69,11 @@ int main(int argc, char** argv) {
             if (!esperadas.empty()) {
                 if (nout < (int)esperadas.size()) {
                     if (v != esperadas[nout]) {
-                        printf("   <-- MAL: esperaba 0x%02X\n", esperadas[nout]);
+                        printf("   <-- WRONG: expected 0x%02X\n", esperadas[nout]);
                         errores++;
                     }
                 } else {
-                    printf("   <-- MAL: salida de mas\n");
+                    printf("   <-- WRONG: extra output\n");
                     errores++;
                 }
             }
@@ -83,19 +83,19 @@ int main(int argc, char** argv) {
         if (i == 99999) timeout = true;
     }
 
-    if (top->halted == 0) { printf("TIMEOUT: la CPU no llego a HLT\n"); errores++; }
+    if (top->halted == 0) { printf("TIMEOUT: the CPU did not reach HLT\n"); errores++; }
     if (!esperadas.empty() && nout != (int)esperadas.size()) {
-        printf("Numero de salidas %d != esperadas %zu\n", nout, esperadas.size());
+        printf("Number of outputs %d != expected %zu\n", nout, esperadas.size());
         errores++;
     }
     (void)timeout;
 
     int rc;
     if (errores) {
-        printf("\nCPU (Verilator): HAY %d ERRORES\n", errores);
+        printf("\nCPU (Verilator): THERE ARE %d ERRORS\n", errores);
         rc = 1;
     } else {
-        printf("\nCPU (Verilator): TODOS LOS TESTS PASARON\n");
+        printf("\nCPU (Verilator): ALL TESTS PASSED\n");
         rc = 0;
     }
     delete top;

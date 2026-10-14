@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tests del desensamblador (tools/disasm.py).
+"""Tests for the disassembler (tools/disasm.py).
 
-Comprueba la decodificacion de cada grupo de instrucciones y, sobre todo, la
-propiedad **round-trip**: ensamblar un programa, desensamblarlo y volver a
-ensamblarlo debe dar exactamente los mismos bytes.
+Checks the decoding of each instruction group and, above all, the **round-trip**
+property: assembling a program, disassembling it and assembling it again must
+yield exactly the same bytes.
 """
 
 from __future__ import annotations
@@ -23,13 +23,13 @@ import fuzz  # noqa: E402
 
 
 def d(bs: list[int]) -> str:
-    """Desensambla una unica instruccion y devuelve su texto."""
+    """Disassembles a single instruction and returns its text."""
     texto, _ = disasm.decodificar(bs, 0)
     return texto
 
 
 # ---------------------------------------------------------------------------
-#  Decodificacion por grupos
+#  Decoding by groups
 # ---------------------------------------------------------------------------
 
 def test_grupo0_inc_dec_push_pop() -> None:
@@ -57,7 +57,7 @@ def test_ld_st_directo_e_indexado() -> None:
     assert d([0x30, 0x20]) == "LD A, [0x20]"
     assert d([0x44, 0x20]) == "ST B, [0x20]"
     assert d([0x31, 0x03]) == "LD A, [B+3]"
-    # Desplazamiento negativo mostrado con signo.
+    # Negative displacement shown with sign.
     assert d([0x36, 0xFF]) == "LD B, [C-1]"
 
 
@@ -100,14 +100,14 @@ def test_grupo_f() -> None:
 
 
 def test_multibyte_longitudes() -> None:
-    # Instrucciones de 1 byte consumen 1; las de 2 bytes, 2.
+    # 1-byte instructions consume 1; 2-byte ones, 2.
     for bs, ln in [([0xE0], 1), ([0xF8, 0x07], 2), ([0xC0, 0x04], 2),
                    ([0x20], 1), ([0xF0], 1)]:
         assert disasm.decodificar(bs, 0)[1] == ln
 
 
 # ---------------------------------------------------------------------------
-#  Round-trip: asm -> hex -> (desensamblar) -> asm -> hex  (bytes identicos)
+#  Round-trip: asm -> hex -> (disassemble) -> asm -> hex  (identical bytes)
 # ---------------------------------------------------------------------------
 
 PROGRAMAS = sorted((RAIZ / "programs").glob("*.asm"))
@@ -119,11 +119,11 @@ def test_round_trip_programas(asm_path: Path) -> None:
     fuente = "\n".join(disasm.desensamblar_crudo(original)) + "\n"
     reensamblado = assembler.ensamblar(fuente)[0]
     assert reensamblado == original, (
-        f"{asm_path.name}: el reensamblado difiere del original\n{fuente}")
+        f"{asm_path.name}: the reassembly differs from the original\n{fuente}")
 
 
 # ---------------------------------------------------------------------------
-#  Fuzz: programas aleatorios validos -> asm -> hex -> desasm -> asm -> hex
+#  Fuzz: valid random programs -> asm -> hex -> disasm -> asm -> hex
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("semilla", range(40))
@@ -134,4 +134,4 @@ def test_fuzz_round_trip(semilla: int) -> None:
     original = assembler.ensamblar(fuente)[0]
     reensamblado = assembler.ensamblar(
         "\n".join(disasm.desensamblar_crudo(original)) + "\n")[0]
-    assert reensamblado == original, f"semilla {semilla}:\n{fuente}"
+    assert reensamblado == original, f"seed {semilla}:\n{fuente}"

@@ -8,12 +8,12 @@ on:
 
 jobs:
   test:
-    # Fijado a 24.04 (no ubuntu-latest) para que el runner no cambie de version
-    # de iverilog/verilator de forma sorpresiva al migrar ubuntu-latest a 26.
+    # Pinned to 24.04 (not ubuntu-latest) so the runner does not change the
+    # iverilog/verilator version unexpectedly when ubuntu-latest migrates to 26.
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
-    # El Makefile del proyecto esta en cpu8/, no en la raiz del repositorio.
+    # The project Makefile is in cpu8/, not at the repository root.
     defaults:
       run:
         working-directory: cpu8

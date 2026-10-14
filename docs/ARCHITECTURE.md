@@ -1,158 +1,157 @@
-# Arquitectura CPU8
+# CPU8 architecture
 
-## Visión general
+## Overview
 
-CPU8 es una CPU educativa de **8 bits** con arquitectura **von Neumann** (memoria unificada para código y datos). Bus de direcciones y datos de 8 bits → **256 bytes** de memoria RAM accesible.
+CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unified memory for code and data). 8-bit address and data buses → **256 bytes** of addressable RAM.
 
-- **Palabras de instrucción**: variables (1 byte o 2 bytes)
-- **Registros**: A, B, C, D (GPR), PC, SP, IR, operand, flags (Z, C, N, V), registro I (IRQ)
-- **ALU**: combinacional con operaciones ADD/SUB/AND/OR/XOR/CMP/SHL/SHR, las variantes inmediatas ADDI/SUBI/CMPI y MUL/DIV
-- **Control**: FSM síncrona con 5 estados (`FETCH`, `OPR`, `EXEC`, `IRQ`, `HLT`)
-- **Pila**: LIFO con crecimiento hacia direcciones inferiores (ver `docs/ISA.md`)
-- **Interrupciones**: IRQ vector configurable (`IRQ_VECTOR`), atendida una única vez por ciclo IRQ
-- **Soporte FPGA**: iCEstick/iCE40HX1K (ver `fpga/top.v`); el diseño **cabe** usando 1 BRAM para la memoria (~30 % de las LUTs de la HX1K)
+- **Instruction words**: variable (1 byte or 2 bytes)
+- **Registers**: A, B, C, D (GPR), PC, SP, IR, operand, flags (Z, C, N, V), register I (IRQ)
+- **ALU**: combinational, with ADD/SUB/AND/OR/XOR/CMP/SHL/SHR operations, the immediate variants ADDI/SUBI/CMPI and MUL/DIV
+- **Control**: synchronous FSM with 5 states (`FETCH`, `OPR`, `EXEC`, `IRQ`, `HLT`)
+- **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
+- **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory (~30 % of the HX1K LUTs)
 
 ## Datapath
 
-El datapath se encuentra principalmente en `rtl/cpu.v`. Elementos clave:
+The datapath lives mainly in `rtl/cpu.v`. Key elements:
 
-- **PC** (`rtl/pc.v`): contador de programa síncrono. Soporta `reset`, `inc`, `load`. Se carga con dirección de salto/RET/IRQ.
-- **Regfile** (`rtl/regfile.v`): banco con 4 registros A,B,C,D. 2 puertos de lectura combinacionales, 1 puerto de escritura síncrono con `we`.
-- **ALU** (`rtl/alu.v`): unidad aritmético-lógica combinacional. Genera resultado y flags `Z`, `C`, `N`, `V`.
-- **RAM** (`rtl/ram.v`): memoria 256x8. Escritura **síncrona** con `we` y lectura **registrada en el flanco de bajada** (`mem[addr] → rdata`). Al quedar el dato disponible a mitad de ciclo, el datapath (que registra en `posedge`) lo ve en el mismo ciclo, pero la memoria puede mapearse a **BRAM** (SB_RAM40_4K) en vez de lógica distribuida. Soporta `$readmemh` en simulación e inicialización para síntesis FPGA.
-- **Registros internos**: `IR` (instruction register), `operand` (byte auxiliar para instrucciones de 2 bytes), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (salida hacia LEDs/monitor; la CPU expone además `out_port`, `in_data` e `in_port` para 4 puertos de E/S seleccionables).
-- **Buses**: `addr`, `data_in`, `data_out`, señales de control desde `control.v`.
+- **PC** (`rtl/pc.v`): synchronous program counter. Supports `reset`, `inc`, `load`. It is loaded with the jump/RET/IRQ address.
+- **Regfile** (`rtl/regfile.v`): bank with 4 registers A,B,C,D. 2 combinational read ports, 1 synchronous write port with `we`.
+- **ALU** (`rtl/alu.v`): combinational arithmetic-logic unit. Produces the result and the `Z`, `C`, `N`, `V` flags.
+- **RAM** (`rtl/ram.v`): 256x8 memory. **Synchronous** write with `we` and read **registered on the falling edge** (`mem[addr] → rdata`). Because the data is available mid-cycle, the datapath (which registers on `posedge`) sees it in the same cycle, while the memory can be mapped to **BRAM** (SB_RAM40_4K) instead of distributed logic. Supports `$readmemh` in simulation and initialization for FPGA synthesis.
+- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports).
+- **Buses**: `addr`, `data_in`, `data_out`, control signals from `control.v`.
 
-## Unidad de control (FSM)
+## Control unit (FSM)
 
-`rtl/control.v` implementa una máquina de estados finita síncrona con reloj `clk` y `reset`.
+`rtl/control.v` implements a synchronous finite state machine with clock `clk` and `reset`.
 
-**Estados:**
+**States:**
 
-| Estado | Nombre | Descripción |
+| State | Name | Description |
 |---|---|---|
-| `0` | `FETCH` | Leer instrucción desde `ram[PC]` → cargar `IR`. Incrementar `PC`. Decidir la longitud con el byte leído: 1 byte → `EXEC`, 2 bytes → `OPR`. Si `I=1` e `irq=1`, ir a `IRQ`. |
-| `1` | `OPR` | Leer operando desde `ram[PC]` → cargar `operand`. Incrementar `PC`. Pasar a `EXEC`. |
-| `2` | `EXEC` | Ejecutar operación según decodificación (mover datos, ALU, saltos, stack, I/O). Actualizar flags/registros/RAM según corresponda. |
-| `3` | `IRQ` | Atender interrupción: guardar PC en pila (PUSH), bajar `I`, saltar a `IRQ_VECTOR`. Volver a FETCH. |
-| `4` | `HLT` | Estado detenido. CPU permanece en HLT hasta `reset`. |
+| `0` | `FETCH` | Read the instruction from `ram[PC]` → load `IR`. Increment `PC`. Decide the length from the fetched byte: 1 byte → `EXEC`, 2 bytes → `OPR`. If `I=1` and `irq=1`, go to `IRQ`. |
+| `1` | `OPR` | Read the operand from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. |
+| `2` | `EXEC` | Execute the operation according to the decode (move data, ALU, branches, stack, I/O). Update flags/registers/RAM as appropriate. |
+| `3` | `IRQ` | Handle the interrupt: save PC on the stack (PUSH), clear `I`, jump to `IRQ_VECTOR`. Return to FETCH. |
+| `4` | `HLT` | Halted state. The CPU stays in HLT until `reset`. |
 
-> La longitud de la instrucción se decide en el propio `FETCH` con `fetched`
-> (el byte recién leído de `RAM[PC]`), por lo que no existe un estado `DECODE`
-> aparte. `fetched` solo alimenta la transición de estado (registrada), nunca
-> `ram_addr`, así que no se forma un lazo combinacional control↔RAM.
+> The instruction length is decided inside `FETCH` itself with `fetched`
+> (the byte just read from `RAM[PC]`), so there is no separate `DECODE` state.
+> `fetched` only feeds the (registered) state transition, never `ram_addr`, so no
+> combinational control↔RAM loop is formed.
 
 
-**Prioridades** (implícitas en FSM):
-- `reset` fuerza estados iniciales
-- Si `irq` activo **y** no se está atendiendo ya, transita a `IRQ` (tras completar ciclo adecuado según diseño)
-- `HLT` detiene la CPU (permanece en `HLT` hasta `reset`)
+**Priorities** (implicit in the FSM):
+- `reset` forces the initial states
+- If `irq` is active **and** it is not already being handled, transition to `IRQ` (after completing the appropriate cycle per the design)
+- `HLT` stops the CPU (stays in `HLT` until `reset`)
 
-## Flujo típico de instrucción
+## Typical instruction flow
 
-1. **FETCH**: `IR = RAM[PC]; PC = PC+1`; decide la longitud (1 byte → `EXEC`, 2 bytes → `OPR`)
-2. **OPR** (si 2 bytes): `operand = RAM[PC]; PC = PC+1`
-3. **EXEC**: realizar operación, escribir resultados, actualizar flags
-4. Siguiente ciclo vuelve a **FETCH**
+1. **FETCH**: `IR = RAM[PC]; PC = PC+1`; decide the length (1 byte → `EXEC`, 2 bytes → `OPR`)
+2. **OPR** (if 2 bytes): `operand = RAM[PC]; PC = PC+1`
+3. **EXEC**: perform the operation, write the results, update the flags
+4. The next cycle returns to **FETCH**
 
 ## ALU
 
-Implementada en `rtl/alu.v`. Flags:
+Implemented in `rtl/alu.v`. Flags:
 
-- **Z (Zero)**: resultado == 0
-- **N (Negative)**: bit 7 del resultado a 1 (interpretado con signo)
-- **C (Carry)**: acarreo/salida de suma/resta de 8 bits según operación
-- **V (Overflow)**: desbordamiento **con signo** (Ca2); solo para ADD/ADDI/SUB/SUBI/CMP/CMPI e INC/DEC
+- **Z (Zero)**: result == 0
+- **N (Negative)**: bit 7 of the result set (interpreted as signed)
+- **C (Carry)**: carry/borrow out of the 8-bit add/subtract depending on the operation
+- **V (Overflow)**: **signed** overflow (two's complement); only for ADD/ADDI/SUB/SUBI/CMP/CMPI and INC/DEC
 
-Operaciones soportadas: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV` (`MUL`/`DIV` en la fase 9).
+Supported operations: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV` (`MUL`/`DIV` in phase 9).
 
-> `CMP` es resta sin guardar resultado (solo actualiza flags).
-> Con `N` y `V` se implementan las comparaciones con signo (`JLT/JGE/JLE/JGT`).
+> `CMP` is a subtraction that does not store the result (it only updates flags).
+> `N` and `V` implement the signed comparisons (`JLT/JGE/JLE/JGT`).
 
-## Pila y subrutinas
+## Stack and subroutines
 
-- **SP** apunta al tope de pila. Comportamiento definido en `docs/ISA.md`.
-- **PUSH** decrementa SP y escribe valor
-- **POP** lee valor y incrementa SP
-- **CALL** guarda dirección de retorno y salta
-- **RET** recupera dirección de retorno desde pila
+- **SP** points to the top of the stack. Behaviour defined in `docs/ISA.md`.
+- **PUSH** decrements SP and writes the value
+- **POP** reads the value and increments SP
+- **CALL** saves the return address and jumps
+- **RET** recovers the return address from the stack
 
-Ver `programs/callret.asm`, `programs/stack.asm` con sus `.ref`.
+See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 
-## Interrupciones (IRQ)
+## Interrupts (IRQ)
 
-- Señal externa `irq` activa solicitud
-- Vector configurable por parámetro: `cpu #(.IRQ_VECTOR(0x10))` (usado en `irq_tb.v`)
-- Al atenderse: se guarda PC actual en pila y se carga PC con `IRQ_VECTOR`
-- La implementación evita atender IRQ de forma recurrente (atención única por evento según test `irq_tb.v`)
-- Ver `programs/irq.asm` y `tb/irq_tb.v`
+- External signal `irq` raises the request
+- Vector configurable by parameter: `cpu #(.IRQ_VECTOR(0x10))` (used in `irq_tb.v`)
+- When handled: the current PC is saved on the stack and PC is loaded with `IRQ_VECTOR`
+- The implementation avoids handling IRQs repeatedly (a single handling per event, per the `irq_tb.v` test)
+- See `programs/irq.asm` and `tb/irq_tb.v`
 
-## Ensamblador
+## Assembler
 
-`asm/assembler.py` es un ensamblador **2 pasadas**:
+`asm/assembler.py` is a **2-pass** assembler:
 
-- **Pasada 1**: recolecta etiquetas/símbolos
-- **Pasada 2**: genera bytes con codificación según `docs/ISA.md`
-- Soporta mnemonics, inmediatos (`LDI`/`ADDI`/`SUBI`/`CMPI`), registros, direccionamiento directo `[a]`, indirecto por registro `[r]`, **indexado** `[r+off]`, etiquetas, comentarios `;` y saltos sin signo/`Jcc` con signo (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
-- Genera `.hex` con bytes hexadecimales (una instrucción por línea o secuencia)
+- **Pass 1**: collects labels/symbols
+- **Pass 2**: generates bytes with the encoding from `docs/ISA.md`
+- Supports mnemonics, immediates (`LDI`/`ADDI`/`SUBI`/`CMPI`), registers, direct addressing `[a]`, register-indirect `[r]`, **indexed** `[r+off]`, labels, `;` comments and unsigned branches/signed `Jcc` (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
+- Generates `.hex` with hexadecimal bytes (one instruction per line or sequence)
 
-## Verificación
+## Verification
 
-- **Módulos**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v` (incluye barridos exhaustivos en ALU)
-- **Programas**: cada `programs/*.asm` se ensambla, simula con `cpu_tb.v` y compara `OUT` con `programs/*.ref`
-- **IRQ**: `irq_tb.v` verifica atención correcta
-- **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` carga `.hex` y compara con `.ref`
-- **Dirigido**: `cpu_directed_tb.v` cubre casos límite (CALL/RET, pila, E/S portada, etc.)
-- **Ensamblador**: `asm/test_assembler.py` (pytest) verifica la codificación instrucción a instrucción; `asm/test_isa_table.py` comprueba que la tabla ISA no deriva del ensamblador ni del desensamblador.
-- **Diferencial**: `tools/iss.py` (modelo de referencia) se contrasta instrucción a
-  instrucción con el RTL a través de `tb/cpu_dump_tb.v` (`make difftest`); los
-  `.ref` dorados de `programs/` también se reproducen desde el modelo
-  (`tools/test_iss.py`). El fuzz diferencial cubre además la atención de
-  interrupciones: parte de los programas aleatorios se ejecutan con la señal `irq`
-  activa y el ISS modela `S_IRQ` igual que el RTL.
-- **Lint / docs**: `make lint` (ruff) revisa el código Python y `make docs-check`
-  verifica que `docs/OPCODES.md` está al día respecto a `asm/isa_table.py`.
+- **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v` (includes exhaustive sweeps in the ALU)
+- **Programs**: each `programs/*.asm` is assembled, simulated with `cpu_tb.v` and its `OUT` is compared with `programs/*.ref`
+- **IRQ**: `irq_tb.v` verifies correct handling
+- **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`
+- **Directed**: `cpu_directed_tb.v` covers corner cases (CALL/RET, stack, ported I/O, etc.)
+- **Assembler**: `asm/test_assembler.py` (pytest) verifies the instruction-by-instruction encoding; `asm/test_isa_table.py` checks that the ISA table does not drift from the assembler or the disassembler.
+- **Differential**: `tools/iss.py` (reference model) is contrasted instruction by
+  instruction with the RTL through `tb/cpu_dump_tb.v` (`make difftest`); the
+  golden `.ref` files in `programs/` are also reproduced from the model
+  (`tools/test_iss.py`). Differential fuzzing additionally covers interrupt
+  handling: some of the random programs run with the `irq` signal active and the
+  ISS models `S_IRQ` just like the RTL.
+- **Lint / docs**: `make lint` (ruff) reviews the Python code and `make docs-check`
+  verifies that `docs/OPCODES.md` is up to date with respect to `asm/isa_table.py`.
 
-## Herramientas (`tools/`)
+## Tools (`tools/`)
 
-- **Desensamblador** (`tools/disasm.py`): `.hex` → listado en ensamblador legible
-  (`make disasm PROG=programs/<nombre>`). Su salida es sintaxis válida del
-  ensamblador, así que se puede reensamblar (propiedad *round-trip* que se prueba
-  en `tools/test_disasm.py`).
-- **Debugger de traza** (`tb/cpu_trace_tb.v`): ejecuta un programa y muestra una
-  línea por instrucción retirada con `PC`, `IR`, `A`, `B`, `C`, `D`, `Z`, `C`, `N`,
-  `V` y `SP` (`make trace PROG=programs/<nombre>`).
-- **Harness de regresión** (`tools/regress.py`): comprueba que (1) el ensamblado
-  produce los mismos bytes que la referencia dorada (`tools/golden/hex.sha256`),
-  (2) la traza de cada programa coincide con la dorada
-  (`tools/golden/traces/*.trace`) y (3) 200 programas aleatorios sobreviven al
-  *round-trip* ensamblar→desensamblar→ensamblar (`make regress`). Regenera la
-  referencia con `make regress-update`.
-- **Fuzz** (`tools/fuzz.py`): generador de programas aleatorios válidos usado por
-  el harness y los tests.
-- **Modelo de referencia / ISS** (`tools/iss.py`): simulador funcional del ISA en
-  Python (estado arquitectónico completo: registros, flags, `SP`, `PC`, RAM y
-  puertos de E/S). No es ciclo a ciclo, pero replica exactamente la semántica de
-  `rtl/`. Se puede usar directamente:
+- **Disassembler** (`tools/disasm.py`): `.hex` → readable assembler listing
+  (`make disasm PROG=programs/<name>`). Its output is valid assembler syntax, so
+  it can be reassembled (the *round-trip* property tested in
+  `tools/test_disasm.py`).
+- **Trace debugger** (`tb/cpu_trace_tb.v`): runs a program and prints one line per
+  retired instruction with `PC`, `IR`, `A`, `B`, `C`, `D`, `Z`, `C`, `N`, `V` and
+  `SP` (`make trace PROG=programs/<name>`).
+- **Regression harness** (`tools/regress.py`): checks that (1) assembly produces
+  the same bytes as the golden reference (`tools/golden/hex.sha256`), (2) each
+  program's trace matches the golden one (`tools/golden/traces/*.trace`) and
+  (3) 200 random programs survive the assemble→disassemble→assemble *round-trip*
+  (`make regress`). Regenerate the reference with `make regress-update`.
+- **Fuzz** (`tools/fuzz.py`): generator of valid random programs used by the
+  harness and the tests.
+- **Reference model / ISS** (`tools/iss.py`): functional simulator of the ISA in
+  Python (full architectural state: registers, flags, `SP`, `PC`, RAM and I/O
+  ports). It is not cycle-accurate, but it replicates the semantics of `rtl/`
+  exactly. It can be used directly:
   `python3 tools/iss.py programs/countdown.hex --trace`.
-- **Fuzz diferencial** (`tools/difftest.py` + `tb/cpu_dump_tb.v`): ejecuta cada
-  programa (los `programs/*.asm` y programas aleatorios de `tools/fuzz.py`) en el
-  RTL y en el ISS y compara el estado **tras cada instrucción** (A-D, Z/C/N/V,
-  SP, PC, la secuencia de `OUT` y la RAM final). Es la verificación que caza bugs
-  que las trazas doradas no ven (estas solo prueban *estabilidad*, no
-  *corrección*). Uso: `make difftest [COUNT=N] [SEED=S] [ONLYPROGS=1]`.
-- **Tests del ISS** (`tools/test_iss.py`): micro-tests dirigidos de la ALU/flags/
-  pila/indexado/`Jcc`/puertos/IRQ y contraste del ISS con los `.ref` dorados
-  (`make pytools`).
-- **Tabla ISA y documentación de opcodes** (`asm/isa_table.py` + `tools/gen_docs.py`):
-  la tabla es la fuente única de la ISA; `make docs` regenera `docs/OPCODES.md` y
-  `make docs-check` comprueba que está al día.
+- **Differential fuzzing** (`tools/difftest.py` + `tb/cpu_dump_tb.v`): runs each
+  program (the `programs/*.asm` ones and random programs from `tools/fuzz.py`) on
+  the RTL and on the ISS and compares the state **after every instruction** (A-D,
+  Z/C/N/V, SP, PC, the `OUT` sequence and the final RAM). It is the verification
+  that catches bugs the golden traces cannot see (those only prove *stability*,
+  not *correctness*). Usage: `make difftest [COUNT=N] [SEED=S] [ONLYPROGS=1]`.
+- **ISS tests** (`tools/test_iss.py`): directed micro-tests for the ALU/flags/
+  stack/indexing/`Jcc`/ports/IRQ and contrasting the ISS with the golden `.ref`
+  files (`make pytools`).
+- **ISA table and opcode documentation** (`asm/isa_table.py` + `tools/gen_docs.py`):
+  the table is the single source of truth for the ISA; `make docs` regenerates
+  `docs/OPCODES.md` and `make docs-check` verifies it is up to date.
 
-## Referencias
+## References
 
-- `docs/ISA.md` – Especificación completa (opcode map, modos, flags, stack, IRQ)
-- `rtl/` – Implementación RTL
+- `docs/ISA.md` – Full specification (opcode map, modes, flags, stack, IRQ)
+- `rtl/` – RTL implementation
 - `tb/` – Testbenches
-- `tools/` – Ensamblador (desensamblador), traza, regresión, ISS y fuzz diferencial
-- `programs/` – Ejemplos con referencias
-- `programs/README.md` – Descripción de los programas de ejemplo
+- `tools/` – Assembler (disassembler), trace, regression, ISS and differential fuzzing
+- `programs/` – Examples with references
+- `programs/README.md` – Description of the example programs

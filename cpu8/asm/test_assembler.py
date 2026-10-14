@@ -1,13 +1,13 @@
-"""Tests del ensamblador de cpu8 (``asm/assembler.py``).
+"""Tests for the cpu8 assembler (``asm/assembler.py``).
 
-Se ejecutan con ``pytest`` desde la raiz del proyecto o desde ``asm/``:
+They are run with ``pytest`` from the project root or from ``asm/``:
 
     python3 -m pytest asm/test_assembler.py -v
 
-Cubre la codificacion segun ``docs/ISA.md``, la verificacion de los programas
-demo (byte a byte contra los ``.hex`` comprometidos) y los casos limite que se
-corrigieron: colision etiqueta/registro en LD/ST indirecto, BOM UTF-8, CRLF,
-linea del error de desbordamiento, literales con signo, etc.
+It covers the encoding according to ``docs/ISA.md``, the verification of the
+demo programs (byte by byte against the committed ``.hex`` files) and the edge
+cases that were fixed: label/register collision in indirect LD/ST, UTF-8 BOM,
+CRLF, the line of the overflow error, signed literals, etc.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-# Permite ``import assembler`` aunque pytest no anada asm/ al sys.path.
+# Allows ``import assembler`` even if pytest does not add asm/ to sys.path.
 _ASM_DIR = Path(__file__).resolve().parent
 if str(_ASM_DIR) not in sys.path:
     sys.path.insert(0, str(_ASM_DIR))
@@ -29,7 +29,7 @@ DEMOS = sorted(p.stem for p in PROGRAMS_DIR.glob("*.asm"))
 
 
 def asm(src: str) -> list[int]:
-    """Ensambla y devuelve la lista de bytes (lanza AssemblerError si falla)."""
+    """Assembles and returns the list of bytes (raises AssemblerError on failure)."""
     salida, _etiquetas, _listado = assembler.ensamblar(src)
     return salida
 
@@ -39,7 +39,7 @@ def leer_hex(path: Path) -> list[int]:
 
 
 # ---------------------------------------------------------------------------
-#  Verificacion de los programas demo (regresion byte a byte)
+#  Demo program verification (byte-by-byte regression)
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("nombre", DEMOS)
@@ -50,7 +50,7 @@ def test_programa_demo_es_byte_identico_al_hex(nombre: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-#  Codificacion basica (docs/ISA.md §3)
+#  Basic encoding (docs/ISA.md §3)
 # ---------------------------------------------------------------------------
 
 def test_nop_es_mov_a_a() -> None:
@@ -88,7 +88,7 @@ def test_sistema_hlt_ret_ei_di() -> None:
 
 
 def test_jmp_call_jcc() -> None:
-    # JMP = 0xC0 + a; CALL = 0xC1 + a; Jcc = 0xD0|cc + a (rd reservado 00).
+    # JMP = 0xC0 + a; CALL = 0xC1 + a; Jcc = 0xD0|cc + a (rd reserved 00).
     assert asm("JMP 0x10") == [0xC0, 0x10]
     assert asm("CALL 0x10") == [0xC1, 0x10]
     assert asm("JZ  0x10") == [0xD0, 0x10]
@@ -104,7 +104,7 @@ def test_aliases_jhs_jlo() -> None:
 
 
 # ---------------------------------------------------------------------------
-#  LD/ST directos e indirectos
+#  Direct and indirect LD/ST
 # ---------------------------------------------------------------------------
 
 def test_ld_st_directos_con_y_sin_corchetes() -> None:
@@ -122,15 +122,15 @@ def test_ld_st_indirectos() -> None:
 
 
 def test_indirecto_tiene_tamano_2_bytes() -> None:
-    # Un indirecto desplaza a la etiqueta siguiente 2 bytes, no 1.
+    # An indirect pushes the next label 2 bytes further, not 1.
     assert asm("LD A, [B]\nfin:\nHLT") == [0xF4, 0x01, 0xF0]
 
 
 def test_etiqueta_nombrada_como_registro_minuscula_es_directa() -> None:
-    # Colision: 'b' es una etiqueta (sensible a mayusculas); 'B' seria el
-    # registro. Con 'b:' definida, [b] es un acceso directo a su direccion.
+    # Collision: 'b' is a label (case-sensitive); 'B' would be the register.
+    # With 'b:' defined, [b] is a direct access to its address.
     src = "b:\nLDI A, 1\nLD A, [b]"
-    assert asm(src) == [0x10, 0x01, 0x30, 0x00]   # 0x00 = direccion de 'b'
+    assert asm(src) == [0x10, 0x01, 0x30, 0x00]   # 0x00 = address of 'b'
 
 
 def test_etiqueta_mayuscula_colisiona_y_gana_la_etiqueta() -> None:
@@ -139,17 +139,17 @@ def test_etiqueta_mayuscula_colisiona_y_gana_la_etiqueta() -> None:
 
 
 def test_sin_colision_el_registro_manda() -> None:
-    # Si no existe la etiqueta 'B', [D] sigue siendo indirecto por registro.
+    # If the label 'B' does not exist, [D] is still indirect by register.
     assert asm("LDI A, 1\nLD A, [D]") == [0x10, 0x01, 0xF4, 0x03]
 
 
 # ---------------------------------------------------------------------------
-#  Extensiones del §6: inmediatos, indexado y saltos con signo
+#  §6 extensions: immediates, indexed and signed jumps
 # ---------------------------------------------------------------------------
 
 def test_inmediatos_aldi_subi_cmpi() -> None:
-    # Pagina 0x1 con la suboperacion en el campo rs: 00 LDI, 01 ADDI, 10 SUBI,
-    # 11 CMPI.  Byte1 = 0x10 | (rd<<2) | subop; byte2 = inmediato.
+    # Page 0x1 with the sub-operation in the rs field: 00 LDI, 01 ADDI,
+    # 10 SUBI, 11 CMPI.  Byte1 = 0x10 | (rd<<2) | subop; byte2 = immediate.
     assert asm("LDI  A, 5") == [0x10, 0x05]
     assert asm("ADDI A, 5") == [0x11, 0x05]
     assert asm("SUBI B, 6") == [0x16, 0x06]
@@ -162,7 +162,7 @@ def test_inmediato_es_2_bytes_y_desplaza_etiquetas() -> None:
 
 
 def test_indexado_ld_st() -> None:
-    # LD/ST rd,[rs+off]: opcode 0x3/0x4, base en rs (B/C/D), off en el 2o byte.
+    # LD/ST rd,[rs+off]: opcode 0x3/0x4, base in rs (B/C/D), off in the 2nd byte.
     assert asm("LD A, [B+3]") == [0x31, 0x03]
     assert asm("ST A, [B+3]") == [0x41, 0x03]
     assert asm("LD D, [C+1]") == [0x3E, 0x01]
@@ -174,25 +174,25 @@ def test_indexado_desplazamiento_negativo() -> None:
 
 
 def test_indexado_desplazamiento_etiqueta() -> None:
-    # La base es un registro y el desplazamiento una etiqueta.
+    # The base is a register and the displacement a label.
     src = "tabla:\nLD A, [B+tabla]"
     assert asm(src) == [0x31, 0x00]
 
 
 def test_indexado_con_base_a_es_error() -> None:
-    # rs=00 codifica el modo absoluto, asi que la base A no esta disponible.
-    with pytest.raises(assembler.AssemblerError, match="base B, C o D"):
+    # rs=00 encodes the absolute mode, so base A is not available.
+    with pytest.raises(assembler.AssemblerError, match="base B, C or D"):
         asm("LD A, [A+1]")
 
 
 def test_indexado_no_confunde_con_indirecto() -> None:
-    # [B] sigue siendo indirecto (0xF4); [B+0] es indexado con off=0.
+    # [B] is still indirect (0xF4); [B+0] is indexed with off=0.
     assert asm("LD A, [B]") == [0xF4, 0x01]
     assert asm("LD A, [B+0]") == [0x31, 0x00]
 
 
 def test_saltos_con_signo_y_estado() -> None:
-    # Familia en el campo rd del Jcc: 00 sin signo, 01 con signo, 10 estado.
+    # Family in the rd field of the Jcc: 00 unsigned, 01 signed, 10 status.
     assert asm("JLT fin\nfin:\nHLT") == [0xD4, 0x02, 0xF0]
     assert asm("JGE fin\nfin:\nHLT") == [0xD5, 0x02, 0xF0]
     assert asm("JLE fin\nfin:\nHLT") == [0xD6, 0x02, 0xF0]
@@ -204,7 +204,7 @@ def test_saltos_con_signo_y_estado() -> None:
 
 
 def test_saltos_sin_signo_siguen_igual() -> None:
-    # Retrocompatibilidad: JZ/JNZ/JC/JNC/(JHS/JLO) no cambian de byte.
+    # Backward compatibility: JZ/JNZ/JC/JNC/(JHS/JLO) do not change byte.
     assert asm("JZ fin\nfin:\nHLT") == [0xD0, 0x02, 0xF0]
     assert asm("JNZ fin\nfin:\nHLT") == [0xD1, 0x02, 0xF0]
     assert asm("JC fin\nfin:\nHLT") == [0xD2, 0x02, 0xF0]
@@ -214,7 +214,7 @@ def test_saltos_sin_signo_siguen_igual() -> None:
 
 
 # ---------------------------------------------------------------------------
-#  MUL / DIV (grupo 0xF, Fase 9)
+#  MUL / DIV (group 0xF, Phase 9)
 # ---------------------------------------------------------------------------
 
 def test_mul_div_encoding() -> None:
@@ -232,24 +232,24 @@ def test_mul_div_son_2_bytes_y_desplazan_etiquetas() -> None:
 
 
 def test_mul_div_exigen_dos_operandos() -> None:
-    with pytest.raises(assembler.AssemblerError, match="2 operando"):
+    with pytest.raises(assembler.AssemblerError, match="2 operand"):
         asm("MUL A")
-    with pytest.raises(assembler.AssemblerError, match="2 operando"):
+    with pytest.raises(assembler.AssemblerError, match="2 operand"):
         asm("DIV A, B, C")
 
 
 # ---------------------------------------------------------------------------
-#  IN / OUT portados (grupo 0xF, Fase 9)
+#  Ported IN / OUT (group 0xF, Phase 9)
 # ---------------------------------------------------------------------------
 
 def test_out_registro_sigue_igual() -> None:
-    # Retrocompatibilidad: OUT rd (1 byte) no cambia.
+    # Backward compatibility: OUT rd (1 byte) does not change.
     assert asm("OUT A") == [0xE0]
     assert asm("OUT D") == [0xEC]
 
 
 def test_in_registro_encoding() -> None:
-    # IN rd = 0xE0|(rd<<2)|01 (puerto 0).
+    # IN rd = 0xE0|(rd<<2)|01 (port 0).
     assert asm("IN A") == [0xE1]
     assert asm("IN D") == [0xED]
 
@@ -273,17 +273,17 @@ def test_out_in_ported_son_2_bytes() -> None:
 
 
 def test_puerto_fuera_de_rango_es_error() -> None:
-    with pytest.raises(assembler.AssemblerError, match="fuera de rango"):
+    with pytest.raises(assembler.AssemblerError, match="out of range"):
         asm("OUT 4, A")
 
 
 def test_out_in_numero_de_operandos() -> None:
-    with pytest.raises(assembler.AssemblerError, match="1 o 2 operando"):
+    with pytest.raises(assembler.AssemblerError, match="1 or 2 operand"):
         asm("IN A, B, C")
 
 
 # ---------------------------------------------------------------------------
-#  Literales numericos
+#  Numeric literals
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize(
@@ -301,7 +301,7 @@ def test_literal_numerico(literal: str, valor: int) -> None:
 
 @pytest.mark.parametrize("literal", ["256", "-129", "0x100", "$100", "0b111111111"])
 def test_literal_fuera_de_rango(literal: str) -> None:
-    with pytest.raises(assembler.AssemblerError, match="fuera de rango"):
+    with pytest.raises(assembler.AssemblerError, match="out of range"):
         asm(f"LDI A, {literal}")
 
 
@@ -312,18 +312,18 @@ def test_literal_no_valido(literal: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-#  Analisis de lineas
+#  Line parsing
 # ---------------------------------------------------------------------------
 
 def test_linea_solo_etiqueta_y_comentarios() -> None:
-    src = "\n; comentario\nfoo:      ; solo etiqueta\n    HLT\n"
+    src = "\n; comment\nfoo:      ; label only\n    HLT\n"
     salida, etiquetas, _ = assembler.ensamblar(src)
     assert salida == [0xF0]
     assert etiquetas == {"foo": 0}
 
 
 def test_comentario_tras_instruccion() -> None:
-    assert asm("LDI A, 1 ; carga uno\nOUT A") == [0x10, 0x01, 0xE0]
+    assert asm("LDI A, 1 ; load one\nOUT A") == [0x10, 0x01, 0xE0]
 
 
 def test_tabs_y_espacios_indiferentes() -> None:
@@ -335,14 +335,14 @@ def test_mnemonicos_y_registros_insensibles_a_mayusculas() -> None:
 
 
 def test_etiquetas_son_sensibles_a_mayusculas() -> None:
-    src = "Loop: HLT\nJMP Loop"   # 'Loop' definida, 'Loop' referenciada
+    src = "Loop: HLT\nJMP Loop"   # 'Loop' defined, 'Loop' referenced
     assert asm(src) == [0xF0, 0xC0, 0x00]
-    with pytest.raises(assembler.AssemblerError, match="no definida"):
+    with pytest.raises(assembler.AssemblerError, match="undefined"):
         asm("Loop: HLT\nJMP loop")
 
 
 # ---------------------------------------------------------------------------
-#  Etiquetas: referencias hacia adelante y errores
+#  Labels: forward references and errors
 # ---------------------------------------------------------------------------
 
 def test_referencia_hacia_adelante() -> None:
@@ -351,37 +351,37 @@ def test_referencia_hacia_adelante() -> None:
 
 
 def test_etiqueta_duplicada() -> None:
-    with pytest.raises(assembler.AssemblerError, match="duplicada"):
+    with pytest.raises(assembler.AssemblerError, match="duplicated"):
         asm("x: HLT\nx: HLT")
 
 
 def test_etiqueta_no_definida_linea_correcta() -> None:
-    with pytest.raises(assembler.AssemblerError, match=r"linea 3:.*no definida"):
+    with pytest.raises(assembler.AssemblerError, match=r"line 3:.*undefined"):
         asm("\n\nJMP nope")
 
 
 def test_registro_invalido_linea_correcta() -> None:
     with pytest.raises(assembler.AssemblerError,
-                       match=r"linea 2: registro desconocido 'X'"):
+                       match=r"line 2: unknown register 'X'"):
         asm("\nMOV A, X")
 
 
 def test_numero_de_operandos_incorrecto() -> None:
-    with pytest.raises(assembler.AssemblerError, match="operando"):
+    with pytest.raises(assembler.AssemblerError, match="operand"):
         asm("MOV A")
-    with pytest.raises(assembler.AssemblerError, match="operando"):
+    with pytest.raises(assembler.AssemblerError, match="operand"):
         asm("NOP A")
-    with pytest.raises(assembler.AssemblerError, match="mnemonico desconocido"):
+    with pytest.raises(assembler.AssemblerError, match="unknown mnemonic"):
         asm("FOO A")
 
 
 # ---------------------------------------------------------------------------
-#  Directivas (.org, .db, .equ)
+#  Directives (.org, .db, .equ)
 # ---------------------------------------------------------------------------
 
 def test_equ_constante_reutilizable() -> None:
     assert asm(".equ SIZE, 5\nLDI A, SIZE\nHLT") == [0x10, 0x05, 0xF0]
-    # La constante puede definirse despues de usarse (pase 0 previo).
+    # The constant can be defined after being used (prior pass 0).
     assert asm("LDI A, N\n.equ N, 7\nHLT") == [0x10, 0x07, 0xF0]
 
 
@@ -390,7 +390,7 @@ def test_equ_encadenada() -> None:
 
 
 def test_equ_duplicada_es_error() -> None:
-    with pytest.raises(assembler.AssemblerError, match="constante duplicada"):
+    with pytest.raises(assembler.AssemblerError, match="duplicated constant"):
         asm(".equ X, 1\n.equ X, 2\nHLT")
 
 
@@ -399,13 +399,13 @@ def test_org_rellena_con_ceros() -> None:
 
 
 def test_org_etiqueta_siguiente() -> None:
-    # La etiqueta despues de .org toma la direccion fijada.
+    # The label after .org takes the fixed address.
     assert asm(".org 0x08\nfin:\nHLT\nJMP fin") == (
         [0x00] * 8 + [0xF0, 0xC0, 0x08])
 
 
 def test_org_retrocede_es_error() -> None:
-    with pytest.raises(assembler.AssemblerError, match="retrocede"):
+    with pytest.raises(assembler.AssemblerError, match="backwards"):
         asm("LDI A, 1\n.org 0x00\nHLT")
 
 
@@ -419,13 +419,13 @@ def test_db_cadena_ascii_con_escapes() -> None:
 
 
 def test_db_cadena_con_comas_y_comillas() -> None:
-    # Las comas dentro de la cadena no separan campos, y se admite \" dentro.
+    # Commas inside the string do not separate fields, and \" is allowed inside.
     assert asm('.db "a,b", "c"') == [0x61, 0x2C, 0x62, 0x63]
     assert asm('.db "x\\"y"') == [0x78, 0x22, 0x79]
 
 
 def test_db_etiqueta_hacia_adelante() -> None:
-    # .db (1 byte) en 0, HLT en 1, etiqueta 'tab' en 2.
+    # .db (1 byte) at 0, HLT at 1, label 'tab' at 2.
     assert asm(".db tab\nHLT\ntab: .db 0x99") == [0x02, 0xF0, 0x99]
 
 
@@ -439,17 +439,17 @@ def test_directiva_minuscula_y_mayuscula() -> None:
 
 
 def test_escape_no_valido_es_error() -> None:
-    with pytest.raises(assembler.AssemblerError, match="escape no valido"):
+    with pytest.raises(assembler.AssemblerError, match="invalid escape"):
         asm('.db "\\q"')
 
 
 def test_org_fuera_de_rango_es_error() -> None:
-    with pytest.raises(assembler.AssemblerError, match="fuera de rango"):
+    with pytest.raises(assembler.AssemblerError, match="out of range"):
         asm(".org 0x100\nHLT")
 
 
 # ---------------------------------------------------------------------------
-#  Casos limite de fichero
+#  File edge cases
 # ---------------------------------------------------------------------------
 
 def test_bom_utf8_al_inicio() -> None:
@@ -462,7 +462,7 @@ def test_crlf() -> None:
 
 def test_fuente_vacio() -> None:
     assert asm("") == []
-    assert asm("\n; solo comentarios\n   \n") == []
+    assert asm("\n; only comments\n   \n") == []
 
 
 def test_256_bytes_es_el_maximo() -> None:
@@ -470,24 +470,24 @@ def test_256_bytes_es_el_maximo() -> None:
 
 
 def test_extraer_linea_del_error_de_desbordamiento() -> None:
-    # 256 NOP caben; el 257.o desborda en la linea 257 (no en len(lineas)).
+    # 256 NOP fit; the 257th overflows at line 257 (not at len(lineas)).
     src = "\n".join("NOP" for _ in range(257))
     with pytest.raises(assembler.AssemblerError) as exc:
         asm(src)
-    assert "linea 257" in str(exc.value)
-    assert "maximo es 256" in str(exc.value)
+    assert "line 257" in str(exc.value)
+    assert "maximum is 256" in str(exc.value)
 
 
 def test_linea_de_desbordamiento_ignora_comentarios_previos() -> None:
-    # 40 lineas de comentario + 257 NOP: el desbordamiento ocurre en la 297.
+    # 40 comment lines + 257 NOP: the overflow happens at line 297.
     src = "; c\n" * 40 + "\n".join("NOP" for _ in range(257))
     with pytest.raises(assembler.AssemblerError) as exc:
         asm(src)
-    assert "linea 297" in str(exc.value)
+    assert "line 297" in str(exc.value)
 
 
 # ---------------------------------------------------------------------------
-#  Interfaz de linea de comandos
+#  Command-line interface
 # ---------------------------------------------------------------------------
 
 def test_salida_por_defecto() -> None:

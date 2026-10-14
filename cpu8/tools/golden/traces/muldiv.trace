@@ -1,4 +1,4 @@
-=== traza de programs/muldiv.hex ===
+=== trace of programs/muldiv.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   07   00   00   00   0 0 0 0  f0      
   02   14   07   06   00   00   0 0 0 0  f0      
@@ -33,4 +33,4 @@
   41   10   c3   07   00   00   1 0 0 0  f0      
   43   e0   c3   07   00   00   1 0 0 0  f0   OUT
   44   f0   c3   07   00   00   1 0 0 0  f0      
-(HLT tras 33 instrucciones)
+(HLT after 33 instructions)

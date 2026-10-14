@@ -1,23 +1,24 @@
 ; ============================================================================
-;  multiply.asm - Multiplicacion por sumas sucesivas (6 x 7)
+;  multiply.asm - Multiplication by repeated addition (6 x 7)
 ;
-;  Calcula 6*7 sumando el multiplicando A=6 al acumulador C tantas veces como
-;  indique el contador B=7, e imprime cada suma parcial:
+;  Computes 6*7 by adding the multiplicand A=6 to the accumulator C as many
+;  times as indicated by counter B=7, and prints each partial sum:
 ;      6 12 18 24 30 36 42
 ;
-;  Al comienzo de cada vuelta se decrementa B; cuando B ya era 0 la resta
-;  produce borrow (C=0) y "JNC" termina antes de sumar una vez de mas.
+;  At the start of each pass B is decremented; when B was already 0 the
+;  subtraction produces a borrow (C=0) and "JNC" finishes before adding one
+;  time too many.
 ; ============================================================================
 
-        LDI A,6          ; multiplicando
-        LDI B,7          ; multiplicador -> numero de vueltas
-        LDI C,0          ; acumulador (el producto)
-        LDI D,1          ; constante 1 para decrementar el contador
+        LDI A,6          ; multiplicand
+        LDI B,7          ; multiplier -> number of passes
+        LDI C,0          ; accumulator (the product)
+        LDI D,1          ; constant 1 to decrement the counter
 
-loop:   SUB B,D          ; B = B - 1   (C=1 mientras B>=1)
-        JNC fin          ; B era 0 -> ya hemos sumado todo
-        ADD C,A          ; acumula 6
-        OUT C            ; muestra la suma parcial
+loop:   SUB B,D          ; B = B - 1   (C=1 while B>=1)
+        JNC end          ; B was 0 -> we have already added everything
+        ADD C,A          ; accumulates 6
+        OUT C            ; shows the partial sum
         JMP loop
 
-fin:    HLT
+end:    HLT

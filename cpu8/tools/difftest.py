@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Fuzz diferencial: RTL (``tb/cpu_dump_tb.v``) contra el modelo ``tools/iss.py``.
+"""Differential fuzz: RTL (``tb/cpu_dump_tb.v``) against the ``tools/iss.py`` model.
 
-Para cada programa (los ``programs/*.asm`` y programas aleatorios de
-``tools/fuzz.py``) ejecuta el RTL y el ISS y compara, instruccion a instruccion,
-registros A-D, flags Z/C/N/V, SP, PC y (al final) el contenido de la RAM y la
-secuencia de OUT.  El primer desacuerdo se reporta con contexto y el programa
-culpable se guarda para reproducirlo.
+For each program (the ``programs/*.asm`` and random programs from
+``tools/fuzz.py``) it runs the RTL and the ISS and compares, instruction by
+instruction, registers A-D, flags Z/C/N/V, SP, PC and (at the end) the contents
+of RAM and the OUT sequence.  The first disagreement is reported with context
+and the offending program is saved so it can be reproduced.
 
-Uso::
+Usage::
 
-    python3 tools/difftest.py                 # 100 aleatorios + los programas demo (max 4096)
+    python3 tools/difftest.py                 # 100 random + the demo programs (max 4096)
     python3 tools/difftest.py --count 500 --seed 1234
-    python3 tools/difftest.py --progs         # solo los programs/*.asm
+    python3 tools/difftest.py --progs         # only the programs/*.asm
     make difftest
 """
 
@@ -38,7 +38,7 @@ RTL_DIR = RAIZ / "rtl"
 TB_DIR = RAIZ / "tb"
 BUILD = RAIZ / "build"
 PROG_DIR = RAIZ / "programs"
-IRQ_VECTOR = 0x08  # debe coincidir con cpu_dump_tb.v
+IRQ_VECTOR = 0x08  # must match cpu_dump_tb.v
 
 
 def _tool(nombre: str, alt: str) -> str:
@@ -86,7 +86,7 @@ def comparar(rtl: list[str], modelo: list[str]) -> tuple[bool, int, str]:
         if a[k] != b[k]:
             return False, k, f"RTL : {a[k]}\n   ISS : {b[k]}"
     if len(a) != len(b):
-        return False, min(len(a), len(b)), f"longitudes distintas: RTL {len(a)}, ISS {len(b)}"
+        return False, min(len(a), len(b)), f"different lengths: RTL {len(a)}, ISS {len(b)}"
     return True, len(a), ""
 
 
@@ -107,29 +107,29 @@ def probar(nombre: str, fuente: str, bytes_prog: list[int], vvp: Path,
         ok, k, detalle = comparar(rtl, modelo)
         if ok:
             etiqueta = "" if irq_at is None else f" [irq>={irq_at}]"
-            print(f"  ok   {nombre}{etiqueta} ({len(_norm(rtl)) - 2} instrucciones)")
+            print(f"  ok   {nombre}{etiqueta} ({len(_norm(rtl)) - 2} instructions)")
             return True
-        print(f"  FALLO {nombre} en la instruccion #{k}"
+        print(f"  FAIL {nombre} at instruction #{k}"
               + ("" if irq_at is None else f" [irq>={irq_at}]"))
         print(f"   {detalle}")
-        print("   --- programa ---")
+        print("   --- program ---")
         for ln in disasm.desensamblar(bytes_prog):
             print(f"   {ln}")
         _guardar_fallo(dir_fallos / nombre, fuente, hexfile)
-        print(f"   guardado en {dir_fallos / nombre}/")
+        print(f"   saved to {dir_fallos / nombre}/")
         return False
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--count", type=int, default=100, help="programas aleatorios")
+    ap.add_argument("--count", type=int, default=100, help="random programs")
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--max", type=int, default=4096, help="tope de instrucciones")
-    ap.add_argument("--progs", action="store_true", help="solo programs/*.asm")
-    ap.add_argument("--instr", type=int, default=40, help="instrucciones por programa aleatorio")
+    ap.add_argument("--max", type=int, default=4096, help="instruction cap")
+    ap.add_argument("--progs", action="store_true", help="only programs/*.asm")
+    ap.add_argument("--instr", type=int, default=40, help="instructions per random program")
     ap.add_argument("--irq-prob", type=float, default=0.5,
-                    help="prob. de ejecutar un programa aleatorio con irq activo")
+                    help="prob. of running a random program with irq active")
     args = ap.parse_args()
 
     vvp = compilar_tb()
@@ -148,13 +148,13 @@ def main() -> int:
             fallos += 1
 
     if not args.progs:
-        print(f"=== {args.count} programas aleatorios (semilla {args.seed}) ===")
+        print(f"=== {args.count} random programs (seed {args.seed}) ===")
         for i in range(args.count):
             rng = random.Random(args.seed * 1000003 + i)
             src = fuzz.generar_fuente(rng, args.instr)
             b, _, _ = assembler.ensamblar(src)
-            # La mitad de los programas (aprox.) se ejecutan ademas con irq activo
-            # para cubrir el camino de interrupcion (antes solo lo cubria irqtest).
+            # About half of the programs are also run with irq active to cover
+            # the interrupt path (previously only covered by irqtest).
             irq_at = None
             if rng.random() < args.irq_prob:
                 irq_at = rng.randrange(0, max(2, args.max // 8 + 2))
@@ -163,9 +163,9 @@ def main() -> int:
                 fallos += 1
 
     if fallos:
-        print(f"\nDIFERENCIAL: {fallos} FALLOS")
+        print(f"\nDIFFERENTIAL: {fallos} FAILURES")
         return 1
-    print("\nDIFERENCIAL: TODO OK")
+    print("\nDIFFERENTIAL: ALL OK")
     return 0
 
 

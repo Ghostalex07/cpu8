@@ -1,4 +1,4 @@
-=== traza de programs/indirect.hex ===
+=== trace of programs/indirect.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   2a   00   00   00   0 0 0 0  f0      
   02   14   2a   20   00   00   0 0 0 0  f0      
@@ -12,4 +12,4 @@
   10   f4   2a   20   00   00   0 0 0 0  f0      
   12   e0   2a   20   00   00   0 0 0 0  f0   OUT
   13   f0   2a   20   00   00   0 0 0 0  f0      
-(HLT tras 12 instrucciones)
+(HLT after 12 instructions)

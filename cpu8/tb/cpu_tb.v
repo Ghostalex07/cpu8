@@ -1,15 +1,15 @@
 // ============================================================================
-//  cpu_tb.v - Testbench de la CPU completa
+//  cpu_tb.v - Full CPU testbench
 //
-//  Carga un programa .hex en la RAM (por defecto programs/fase4.hex, o el que
-//  se pase con +hex=<ruta>), suelta el reset y ejecuta hasta que la CPU
-//  ejecuta HLT.  Recoge todo lo que sale por el puerto OUT.
+//  Loads a .hex program into RAM (by default programs/fase4.hex, or the one
+//  passed with +hex=<path>), releases the reset and runs until the CPU
+//  executes HLT.  It collects everything that comes out through the OUT port.
 //
-//  Si se pasa +exp=<ruta>, compara cada salida con la lista esperada que hay
-//  en ese fichero (un valor hex por linea, sin comentarios).  Sin +exp solo
-//  imprime las salidas, sin comprobar nada.
+//  If +exp=<path> is passed, it compares each output with the expected list in
+//  that file (one hex value per line, no comments).  Without +exp it only
+//  prints the outputs, without checking anything.
 //
-//  Tambien genera build/cpu_tb.vcd para ver el ciclo fetch/decode/execute en
+//  It also generates build/cpu_tb.vcd to see the fetch/decode/execute cycle in
 //  GTKWave.
 // ============================================================================
 `timescale 1ns/1ps
@@ -22,8 +22,8 @@ module cpu_tb;
     wire       halted, out_valid;
     wire [7:0] out_data;
 
-    // Entrada: valor del puerto pedido por la instruccion IN (puerto 0 -> 0x10,
-    // puerto 1 -> 0x11, ...).  Solo lo usan los programas con IN.
+    // Input: value of the port requested by the IN instruction (port 0 -> 0x10,
+    // port 1 -> 0x11, ...).  Only programs with IN use it.
     wire [1:0] in_port;
     wire [7:0] in_data = 8'h10 + {6'b0, in_port};
 
@@ -41,15 +41,15 @@ module cpu_tb;
     integer errors = 0, nout = 0, i;
     reg use_exp;
 
-    // Salidas esperadas leidas de +exp (en hexadecimal por $readmemh).  Las
-    // posiciones no usadas se quedan en 'x' para poder contarlas.
+    // Expected outputs read from +exp (in hex by $readmemh).  The
+    // unused positions stay at 'x' so that they can be counted.
     reg [7:0] expmem [0:255];
     integer   nexp;
 
-    // Cuenta cuantos "tokens" (palabras separadas por blancos) hay en un
-    // fichero de texto.  Lo usamos para saber cuantos bytes tiene el programa
-    // y cuantas salidas esperadas hay, y asi cargar solo ese rango con
-    // $readmemh (evita el aviso "Not enough words...").
+    // Counts how many "tokens" (words separated by whitespace) there are in a
+    // text file.  We use it to know how many bytes the program has
+    // and how many expected outputs there are, and thus load only that range
+    // with $readmemh (avoids the "Not enough words..." warning).
     task contar_tokens;
         input  [1023:0] fname;
         output integer  n;
@@ -60,8 +60,8 @@ module cpu_tb;
             in_t = 0;
             fdd = $fopen(fname, "r");
             if (fdd == 0) begin
-                $display("ERROR: no se pudo abrir %0s", fname);
-                $fatal(1, "fichero no encontrado");
+                $display("ERROR: could not open %0s", fname);
+                $fatal(1, "file not found");
             end
             c = $fgetc(fdd);
             while (c != -1) begin
@@ -77,44 +77,44 @@ module cpu_tb;
         if (!$value$plusargs("hex=%s", hexfile))
             hexfile = "programs/fase4.hex";
 
-        // Formas de onda para GTKWave.
+        // Waveforms for GTKWave.
         $dumpfile("build/cpu_tb.vcd");
         $dumpvars(0, cpu_tb);
 
-        // --- Cuantos bytes tiene el programa (para cargar solo ese rango) ---
-        // $fscanf("%h") no funciona en iverilog 11, asi que contamos palabras
-        // leyendo el fichero caracter a caracter: cada byte del .hex es un token.
+        // --- How many bytes the program has (to load only that range) ---
+        // $fscanf("%h") does not work in iverilog 11, so we count words
+        // by reading the file character by character: each byte of the .hex is a token.
         contar_tokens(hexfile, nlen);
         if (nlen == 0) begin
-            $display("ERROR: el programa %0s esta vacio", hexfile);
-            $fatal(1, "programa vacio");
+            $display("ERROR: the program %0s is empty", hexfile);
+            $fatal(1, "empty program");
         end
-        // Deja la RAM a 0 antes de cargar: las posiciones no cubiertas por el
-        // .hex quedarian en 'x' y cualquier lectura de datos no inicializados
-        // seria indeterminada.  Con 0 el comportamiento es determinista.
+        // Leaves RAM at 0 before loading: the positions not covered by the
+        // .hex would stay at 'x' and any read of uninitialized data
+        // would be indeterminate.  With 0 the behaviour is deterministic.
         for (i = 0; i < 256; i = i + 1) dut.u_ram.mem[i] = 8'h00;
         $readmemh(hexfile, dut.u_ram.mem, 0, nlen - 1);
 
-        // --- Salidas esperadas (+exp) ---
+        // --- Expected outputs (+exp) ---
         use_exp = $value$plusargs("exp=%s", expfile);
         nexp    = 0;
         if (use_exp) begin
             contar_tokens(expfile, nexp);
             if (nexp == 0) begin
-                $display("ERROR: la lista esperada %0s esta vacia", expfile);
-                $fatal(1, "lista esperada vacia");
+                $display("ERROR: the expected list %0s is empty", expfile);
+                $fatal(1, "empty expected list");
             end
             $readmemh(expfile, expmem, 0, nexp - 1);
         end
 
-        $display("=== Simulacion de la CPU (programa %0s, %0d bytes) ===", hexfile, nlen);
+        $display("=== CPU simulation (program %0s, %0d bytes) ===", hexfile, nlen);
 
-        // Reset sincrono 2 ciclos.
+        // Synchronous reset 2 cycles.
         rst = 1;
         repeat (2) @(posedge clk);
         @(negedge clk) rst = 0;
 
-        // Bucle con timeout hasta HLT, recogiendo las salidas OUT.
+        // Loop with timeout until HLT, collecting the OUT outputs.
         i = 0;
         while (!halted && i < 500000) begin
             @(posedge clk);
@@ -123,14 +123,14 @@ module cpu_tb;
                 if (use_exp) begin
                     if (nout < nexp) begin
                         if (out_data !== expmem[nout]) begin
-                            $display("  OUT[%0d] = %0d   ESPERADO %0d   <-- MAL",
+                            $display("  OUT[%0d] = %0d   EXPECTED %0d   <-- WRONG",
                                      nout, out_data, expmem[nout]);
                             errors = errors + 1;
                         end else begin
                             $display("  OUT[%0d] = %0d   ok", nout, out_data);
                         end
                     end else begin
-                        $display("  OUT[%0d] = %0d   <-- salida de mas", nout, out_data);
+                        $display("  OUT[%0d] = %0d   <-- extra output", nout, out_data);
                         errors = errors + 1;
                     end
                 end else begin
@@ -142,21 +142,21 @@ module cpu_tb;
         end
 
         if (!halted) begin
-            $display("  FALLO: la CPU no llego a HLT (posible bucle infinito)");
+            $display("  FAIL: the CPU did not reach HLT (possible infinite loop)");
             errors = errors + 1;
         end
 
         if (use_exp) begin
-            $display("  Salidas emitidas: %0d (esperadas: %0d)", nout, nexp);
+            $display("  Outputs emitted: %0d (expected: %0d)", nout, nexp);
             if (nout !== nexp) errors = errors + 1;
         end else begin
-            $display("  Salidas emitidas: %0d (sin lista esperada, no se compara)", nout);
+            $display("  Outputs emitted: %0d (no expected list, not compared)", nout);
         end
 
-        if (errors == 0) $display("CPU: TODOS LOS TESTS PASARON");
-        else             $display("CPU: %0d FALLOS", errors);
+        if (errors == 0) $display("CPU: ALL TESTS PASSED");
+        else             $display("CPU: %0d FAILURES", errors);
 
-        if (errors != 0) $fatal(1, "CPU: hay fallos, revisa arriba");
+        if (errors != 0) $fatal(1, "CPU: there are failures, check above");
         $finish;
     end
 

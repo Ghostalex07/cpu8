@@ -1,29 +1,29 @@
 ; ---------------------------------------------------------------------------
-;  muldiv.asm - Multiplicacion y division hardware (Fase 9)
+;  muldiv.asm - Hardware multiplication and division (Phase 9)
 ;
-;  MUL rd,rs -> rd = (rd*rs)[7:0];  C = 1 si el producto no cabe en 8 bits.
-;  DIV rd,rs -> rd = rd/rs (sin signo);  C = 1 si el divisor es 0.
-;  Ambas actualizan Z y N.
+;  MUL rd,rs -> rd = (rd*rs)[7:0];  C = 1 if the product does not fit in 8 bits.
+;  DIV rd,rs -> rd = rd/rs (unsigned);  C = 1 if the divisor is 0.
+;  Both update Z and N.
 ;
-;  Salida esperada (OUT): 2A 90 C1 1C 21 00 C2 C3
+;  Expected output (OUT): 2A 90 C1 1C 21 00 C2 C3
 ; ---------------------------------------------------------------------------
 
-        ; --- MUL simple: 7 * 6 = 42 = 0x2A ---
+        ; --- Simple MUL: 7 * 6 = 42 = 0x2A ---
         LDI A, 7
         LDI B, 6
         MUL A, B
         OUT A               ; -> 2A
 
-        ; --- MUL con desbordamiento: 20 * 20 = 400 = 0x0190 (> 0xFF) ---
+        ; --- MUL with overflow: 20 * 20 = 400 = 0x0190 (> 0xFF) ---
         LDI A, 20
         LDI B, 20
         MUL A, B            ; A = 0x90, C = 1
         OUT A               ; -> 90
-        JC  mul_grande
-        LDI A, 0xE1         ; no deberia ejecutarse
+        JC  mul_big
+        LDI A, 0xE1         ; should not run
         OUT A
         HLT
-mul_grande:
+mul_big:
         LDI A, 0xC1
         OUT A               ; -> C1
 
@@ -39,28 +39,28 @@ mul_grande:
         DIV A, B
         OUT A               ; -> 21
 
-        ; --- DIV entre cero: 9 / 0 -> A = 0, C = 1 ---
+        ; --- DIV by zero: 9 / 0 -> A = 0, C = 1 ---
         LDI A, 9
         LDI B, 0
         DIV A, B
         OUT A               ; -> 00
-        JC  div_cero
-        LDI A, 0xE2         ; no deberia ejecutarse
+        JC  div_zero
+        LDI A, 0xE2         ; should not run
         OUT A
         HLT
-div_cero:
+div_zero:
         LDI A, 0xC2
         OUT A               ; -> C2
 
-        ; --- MUL que da 0: 0 * 7 = 0 -> Z = 1 ---
+        ; --- MUL that gives 0: 0 * 7 = 0 -> Z = 1 ---
         LDI A, 0
         LDI B, 7
         MUL A, B
-        JZ  mult_cero
-        LDI A, 0xE3         ; no deberia ejecutarse
+        JZ  mul_zero
+        LDI A, 0xE3         ; should not run
         OUT A
         HLT
-mult_cero:
+mul_zero:
         LDI A, 0xC3
         OUT A               ; -> C3
         HLT

@@ -1,16 +1,16 @@
-# Configuracion de Ruff para el codigo Python de cpu8 (ensamblador, herramientas
-# y tests).  Se mantiene un conjunto CONSERVADOR de reglas: solo errores reales
-# (sintaxis, nombres indefinidos, imports sin usar, f-strings mal formadas),
-# sin imponer reformateos masivos al codigo ya existente.
+# Ruff configuration for the Python code of cpu8 (assembler, tools and tests).
+# A CONSERVATIVE set of rules is kept: only real errors (syntax, undefined
+# names, unused imports, malformed f-strings), without imposing massive
+# reformatting on the existing code.
 #
-#   ruff check .          # o:  make lint
+#   ruff check .          # or:  make lint
 #
-# Para un chequeo mas estricto en local:  ruff check . --select ALL
+# For a stricter check locally:  ruff check . --select ALL
 
 target-version = "py310"
 line-length = 100
 
 [lint]
 select = ["E4", "E7", "E9", "F"]
-# Los scripts ajustan sys.path antes de importar (patron intencional): E402.
+# The scripts adjust sys.path before importing (intentional pattern): E402.
 ignore = ["E402"]

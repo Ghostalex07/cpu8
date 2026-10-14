@@ -1,14 +1,14 @@
 // ============================================================================
-//  pc.v - Contador de Programa (Program Counter) de 8 bits
+//  pc.v - 8-bit Program Counter
 //
-//  Registro síncrono con tres acciones EXCLUYENTES, en orden de prioridad:
-//    1) rst  -> PC = 0                (reset síncrono, activo alto)
-//    2) load -> PC = d_in             (saltos: JMP / Jcc toman el destino)
-//    3) inc  -> PC = PC + 1           (instrucción siguiente)
-//    4) (ninguna) -> mantiene el valor
+//  Synchronous register with three EXCLUSIVE actions, in priority order:
+//    1) rst  -> PC = 0                (synchronous reset, active high)
+//    2) load -> PC = d_in             (jumps: JMP / Jcc take the destination)
+//    3) inc  -> PC = PC + 1           (next instruction)
+//    4) (none) -> holds the value
 //
-//  La unidad de control nunca activará `load` e `inc` a la vez; si lo hiciera,
-//  gana `load` por este orden.
+//  The control unit will never enable `load` and `inc` at the same time; if it
+//  did, `load` wins by this order.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
@@ -26,7 +26,7 @@ module pc (
         if (rst)        q <= 8'h00;
         else if (load)  q <= d_in;
         else if (inc)   q <= q + 8'd1;
-        // si no, mantiene el valor (no se escribe => no hace falta rama else)
+        // otherwise it holds the value (not written => no else branch needed)
     end
 
 endmodule

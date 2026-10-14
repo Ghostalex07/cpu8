@@ -1,17 +1,17 @@
 // ============================================================================
-//  ram_tb.v - Testbench de la RAM
+//  ram_tb.v - RAM testbench
 //
-//  Comprueba:
-//    1) La carga con $readmemh deja los valores del .hex en memoria.
-//    2) Escritura síncrona + lectura registrada (en flanco de bajada) en varias
-//       direcciones.
-//    3) Reescritura de una posición previamente cargada por $readmemh.
-//    4) `we=0` no modifica la memoria.
+//  Checks:
+//    1) Loading with $readmemh leaves the values of the .hex in memory.
+//    2) Synchronous write + registered read (on the falling edge) at several
+//       addresses.
+//    3) Rewriting a position previously loaded by $readmemh.
+//    4) `we=0` does not modify the memory.
 //
-//  La lectura es registrada en el flanco de BAJADA (mem[addr] -> rdata), de modo
-//  que el dato queda disponible a mitad de ciclo para el datapath, que registra
-//  en el flanco de subida.  Por eso `chk` espera al flanco de bajada antes de
-//  comprobar rdata.
+//  The read is registered on the FALLING edge (mem[addr] -> rdata), so
+//  the data is available mid-cycle to the datapath, which registers
+//  on the rising edge.  That is why `chk` waits for the falling edge before
+//  checking rdata.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
@@ -30,8 +30,8 @@ module ram_tb;
 
     always #5 clk = ~clk;
 
-    // Lee la dirección `a` (espera al flanco de bajada: lectura registrada) y
-    // compara con lo esperado.
+    // Reads address `a` (waits for the falling edge: registered read) and
+    // compares with the expected value.
     task chk;
         input [7:0] a;
         input [7:0] exp;
@@ -39,12 +39,12 @@ module ram_tb;
             addr = a; @(negedge clk); #1;
             if (rdata !== exp) begin
                 errors = errors + 1;
-                $display("  FALLO RAM[%02h]=%02h (esperado %02h)", a, rdata, exp);
+                $display("  FAIL RAM[%02h]=%02h (expected %02h)", a, rdata, exp);
             end
         end
     endtask
 
-    // Escribe `d` en la dirección `a` durante un ciclo.
+    // Writes `d` to address `a` for one cycle.
     task wr;
         input [7:0] a;
         input [7:0] d;
@@ -54,11 +54,11 @@ module ram_tb;
     endtask
 
     initial begin
-        $display("=== Testbench de la RAM ===");
+        $display("=== RAM testbench ===");
 
-        // 1) Carga con $readmemh (acceso jerárquico a la memoria interna).
-        //    Indicamos el rango [0:7] para no avisar de que el .hex tiene
-        //    menos de 256 palabras.
+        // 1) Load with $readmemh (hierarchical access to the internal memory).
+        //    We specify the range [0:7] so as not to warn that the .hex has
+        //    fewer than 256 words.
         $readmemh("tb/ram_init.hex", dut.mem, 0, 7);
         chk(8'h00, 8'hA5);
         chk(8'h01, 8'h5A);
@@ -67,26 +67,26 @@ module ram_tb;
         chk(8'h04, 8'h12);
         chk(8'h07, 8'h78);
 
-        // 2) Escritura síncrona y lectura registrada.
+        // 2) Synchronous write and registered read.
         wr(8'h10, 8'hDE);
         chk(8'h10, 8'hDE);
         wr(8'hFF, 8'h42);
         chk(8'hFF, 8'h42);
 
-        // 3) Reescritura de una posición cargada por $readmemh.
+        // 3) Rewrite of a position loaded by $readmemh.
         wr(8'h00, 8'h11);
         chk(8'h00, 8'h11);
 
-        // 4) we=0 no debe cambiar nada.
+        // 4) we=0 must not change anything.
         we = 0; addr = 8'h10; wdata = 8'h00; @(posedge clk); #1;
         chk(8'h10, 8'hDE);
 
         if (errors == 0)
-            $display("RAM: TODOS LOS TESTS PASARON");
+            $display("RAM: ALL TESTS PASSED");
         else
-            $display("RAM: %0d FALLOS", errors);
+            $display("RAM: %0d FAILURES", errors);
 
-        if (errors != 0) $fatal(1, "RAM: hay fallos, revisa arriba");
+        if (errors != 0) $fatal(1, "RAM: there are failures, check above");
         $finish;
     end
 

@@ -1,27 +1,27 @@
 `timescale 1ns/1ps
 `default_nettype none
 // ============================================================================
-//  top.v - Implementacion en FPGA (Fase 7.6) para la iCEstick (iCE40HX1K, TQ144)
+//  top.v - FPGA implementation (Phase 7.6) for the iCEstick (iCE40HX1K, TQ144)
 //
-//  Es la "placa": instancia la CPU, genera el reset de encendido a partir del
-//  reloj y muestra las 5 salidas OUT de menor peso en los 5 LEDs.
+//  It is the "board": it instantiates the CPU, generates the power-on reset from
+//  the clock and shows the 5 least significant OUT outputs on the 5 LEDs.
 //
-//  El programa se carga en la RAM del CPU al sintetizar: ram.v incluye un
-//  $readmemh("fpga/program.hex") bajo `ifdef RAM_INIT` (lo define el Makefile).
+//  The program is loaded into the CPU RAM at synthesis time: ram.v includes a
+//  $readmemh("fpga/program.hex") under `ifdef RAM_INIT` (the Makefile defines it).
 // ============================================================================
 module top (
-    input  wire       clk,        // reloj de 12 MHz (pin 21 en la iCEstick)
+    input  wire       clk,        // 12 MHz clock (pin 21 on the iCEstick)
     output wire [4:0] led         // 5 LEDs (D1..D5)
 );
 
-    // Reset de encendido: rst=1 durante los primeros 8 ciclos tras arrancar.
+    // Power-on reset: rst=1 during the first 8 cycles after start-up.
     reg [3:0] por = 4'd0;
     wire rst = ~por[3];
 
     always @(posedge clk)
         if (!por[3]) por <= por + 4'd1;
 
-    // La CPU (sin interrupciones en esta demo).
+    // The CPU (no interrupts in this demo).
     wire        halted;
     wire        out_valid;
     wire [7:0]  out_data;
@@ -34,12 +34,12 @@ module top (
         .halted(halted),
         .out_data(out_data),
         .out_valid(out_valid),
-        .in_data(8'h00),      // sin entradas cableadas en esta demo
+        .in_data(8'h00),      // no inputs wired in this demo
         .in_port(in_port)
     );
 
-    // Los 5 LEDs muestran los bits bajos del ultimo valor enviado por OUT.
-    // Si la CPU ha parado (HLT), se encienden todos.
+    // The 5 LEDs show the low bits of the last value sent by OUT.
+    // If the CPU has stopped (HLT), they all turn on.
     assign led = halted ? 5'b11111 : out_data[4:0];
 
 endmodule

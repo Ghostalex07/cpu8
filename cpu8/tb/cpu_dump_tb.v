@@ -1,23 +1,23 @@
 `timescale 1ns/1ps
 `default_nettype none
 // ============================================================================
-//  cpu_dump_tb.v - volcado MAQUINA-LEGIBLE del estado, para fuzz diferencial
+//  cpu_dump_tb.v - MACHINE-READABLE dump of the state, for differential fuzz
 //
-//  Ejecuta un programa (``+hex=<ruta>``) y, por cada instruccion RETIRADA,
-//  imprime una linea con el estado arquitectonico.  La salida tiene el mismo
-//  formato que el modelo de referencia ``tools/iss.py``, de modo que
-//  ``tools/difftest.py`` los compara linea a linea:
+//  Runs a program (``+hex=<path>``) and, for each instruction RETIRED,
+//  prints a line with the architectural state.  The output has the same
+//  format as the reference model ``tools/iss.py``, so that
+//  ``tools/difftest.py`` compares them line by line:
 //
 //      I <pc> <ir> <a> <b> <c> <d> <z> <cf> <n> <v> <sp> <pcnext> <ov> <odata> <oport>
-//      M <256 bytes>                (contenido final de la RAM)
-//      END <n_instrucciones>
+//      M <256 bytes>                (final RAM contents)
+//      END <n_instructions>
 //
-//  Detalles:
-//   - La RAM se pone a CERO antes de cargar el programa (ram.v no tiene reset,
-//     asi que en iverilog las posiciones sin cargar valdrian X).  El ISS asume
-//     tambien RAM a cero.
-//   - Entrada como en los demas tb: in_data = 0x10 + puerto.
-//   - irq se deja a 0 (el fuzz diferencial no cubre IRQ; eso lo hace irqtest).
+//  Details:
+//   - The RAM is set to ZERO before loading the program (ram.v has no reset,
+//     so in iverilog the unloaded locations would be X).  The ISS also assumes
+//     RAM at zero.
+//   - Input as in the other tbs: in_data = 0x10 + port.
+//   - irq is left at 0 (the differential fuzz does not cover IRQ; irqtest does).
 // ============================================================================
 
 module cpu_dump_tb;
@@ -37,24 +37,24 @@ module cpu_dump_tb;
 
     always #5 clk = ~clk;
 
-    // Entrada: valor del puerto pedido (puerto 0 -> 0x10, puerto 1 -> 0x11, ...).
+    // Input: value of the requested port (port 0 -> 0x10, port 1 -> 0x11, ...).
     always @(*) in_data = 8'h10 + {6'b0, in_port};
 
     reg [8*256-1:0] hexfile;
     integer maxi, i, dummy;
     integer n = 0;
-    // Nivel de irq: se activa cuando ya se han retirado >= irq_at instrucciones
-    // (mismo convenio que tools/iss.py).  Por defecto irq_at es enorme => nunca
-    // se atiende interrupcion, de modo que el comportamiento sin +irq no cambia.
+    // irq level: it is asserted once >= irq_at instructions have been retired
+    // (same convention as tools/iss.py).  By default irq_at is huge => no
+    // interrupt is ever serviced, so the behaviour without +irq does not change.
     integer irq_at = 100000000;
     assign irq = (n >= irq_at);
 
-    // PC de la instruccion en curso: se latchea al cargar el IR (S_FETCH).
+    // PC of the current instruction: latched when the IR is loaded (S_FETCH).
     reg [7:0] trace_pc;
     always @(posedge clk) if (dut.ir_ld) trace_pc <= dut.pc_q;
 
-    // La instruccion "retira" en el flanco en que se ejecuta S_EXEC; se detecta
-    // en el negedge siguiente (los registros ya estan actualizados).
+    // The instruction "retires" on the edge in which S_EXEC is executed; it is
+    // detected on the following negedge (the registers are already updated).
     reg [2:0] st_d = 3'd0;
     localparam [2:0] S_EXEC = 3'd2;
 

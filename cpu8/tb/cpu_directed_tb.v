@@ -1,19 +1,20 @@
 // ============================================================================
-//  cpu_directed_tb.v - Casos limite que ningun programa demo ejercita a nivel
-//  de CPU (los programas de programs/ cubren el camino feliz).
+//  cpu_directed_tb.v - Corner cases that no demo program exercises at the
+//  CPU level (the programs in programs/ cover the happy path).
 //
-//    A) CALL/RET anidados (2 niveles) y direcciones de retorno correctas.
-//    B) INC/DEC no tocan el flag C (se fuerza C=0 con un SUB que da borrow).
-//    C) SHL/SHR a nivel de CPU (cableado alu_sh = rs[0]).
-//    D) Direccionamiento indirecto con rd == rs (LD A,[A] / ST B,[A]).
-//    E) Pila LIFO (PUSH/POP).
-//    F) IRQ: la direccion de retorno es la frontera de instruccion (tras EI).
-//    G) Inmediatos ADDI/SUBI/CMPI y flag V (JVS por desbordamiento).
-//    H) Direccionamiento indexado LD/ST rd,[rs+off].
-//    I) Saltos con signo (JLT/JGE) sobre el flag V.
+//    A) Nested CALL/RET (2 levels) and correct return addresses.
+//    B) INC/DEC do not touch flag C (C is forced to 0 with a SUB that borrows).
+//    C) SHL/SHR at the CPU level (wiring alu_sh = rs[0]).
+//    D) Indirect addressing with rd == rs (LD A,[A] / ST B,[A]).
+//    E) LIFO stack (PUSH/POP).
+//    F) IRQ: the return address is the instruction boundary (after EI).
+//    G) Immediates ADDI/SUBI/CMPI and flag V (JVS on overflow).
+//    H) Indexed addressing LD/ST rd,[rs+off].
+//    I) Signed jumps (JLT/JGE) over flag V.
 //
-//  Los programas se escriben directamente en RAM por acceso jerarquico, sin
-//  depender del ensamblador.  Se compara la secuencia de OUT con lo esperado.
+//  The programs are written directly into RAM through hierarchical access,
+//  without depending on the assembler.  The OUT sequence is compared with the
+//  expected one.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
@@ -21,7 +22,7 @@
 module cpu_directed_tb;
 
     reg clk = 0, rst = 1, irq = 0;
-    reg [7:0] in_data = 8'h00;   // lo fija el caso dirigido de E/S
+    reg [7:0] in_data = 8'h00;   // set by the directed I/O case
     wire       halted, out_valid;
     wire [7:0] out_data;
     wire [1:0] in_port, out_port;
@@ -52,7 +53,7 @@ module cpu_directed_tb;
         begin dut.u_ram.mem[a] = d; end
     endtask
 
-    task arranca;                 // reset sincrono 2 ciclos, irq=0
+    task arranca;                 // synchronous reset 2 cycles, irq=0
         begin
             rst = 1; irq = 0;
             repeat (2) @(posedge clk);
@@ -60,7 +61,7 @@ module cpu_directed_tb;
         end
     endtask
 
-    task corre;                   // ejecuta hasta HLT recogiendo OUT
+    task corre;                   // runs until HLT collecting OUT
         input integer max;
         begin
             nouts = 0; i = 0;
@@ -84,10 +85,10 @@ module cpu_directed_tb;
         begin
             if (idx >= nouts) begin
                 errors = errors + 1;
-                $display("  FALLO: falta OUT[%0d] (esperado %02h)", idx, exp);
+                $display("  FAIL: missing OUT[%0d] (expected %02h)", idx, exp);
             end else if (outs[idx] !== exp) begin
                 errors = errors + 1;
-                $display("  FALLO OUT[%0d]=%02h (esperado %02h)", idx, outs[idx], exp);
+                $display("  FAIL OUT[%0d]=%02h (expected %02h)", idx, outs[idx], exp);
             end
         end
     endtask
@@ -97,7 +98,7 @@ module cpu_directed_tb;
         begin
             if (nouts !== exp) begin
                 errors = errors + 1;
-                $display("  FALLO: %0d salidas (esperado %0d)", nouts, exp);
+                $display("  FAIL: %0d outputs (expected %0d)", nouts, exp);
             end
         end
     endtask
@@ -108,19 +109,19 @@ module cpu_directed_tb;
         begin
             if (idx >= nouts) begin
                 errors = errors + 1;
-                $display("  FALLO: falta OUT[%0d] para el puerto", idx);
+                $display("  FAIL: missing OUT[%0d] for the port", idx);
             end else if (out_ports[idx] !== exp) begin
                 errors = errors + 1;
-                $display("  FALLO puerto de OUT[%0d]=%0d (esperado %0d)",
+                $display("  FAIL port of OUT[%0d]=%0d (expected %0d)",
                          idx, out_ports[idx], exp);
             end
         end
     endtask
 
     initial begin
-        $display("=== Testbench dirigido de la CPU (casos limite) ===");
+        $display("=== Directed CPU testbench (corner cases) ===");
 
-        // A) CALL/RET anidados -> OUT B = 1
+        // A) Nested CALL/RET -> OUT B = 1
         limpia_mem;
         poke(8'h00,8'hC1); poke(8'h01,8'h04); // CALL 0x04
         poke(8'h02,8'hE4);                    // OUT B
@@ -132,7 +133,7 @@ module cpu_directed_tb;
         arranca; corre(2000);
         chknout(1); chkout(0,8'h01);
 
-        // B) INC/DEC no tocan C -> OUT C = 0xAA
+        // B) INC/DEC do not touch C -> OUT C = 0xAA
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'h00); // LDI A,0
         poke(8'h02,8'h14); poke(8'h03,8'h01); // LDI B,1
@@ -144,12 +145,12 @@ module cpu_directed_tb;
         poke(8'h0B,8'h18); poke(8'h0C,8'hAA); // LDI C,0xAA
         poke(8'h0D,8'hE8);                    // OUT C
         poke(8'h0E,8'hF0);                    // HLT
-        poke(8'h0F,8'h18); poke(8'h10,8'h0B); // (fallo) LDI C,0x0B
+        poke(8'h0F,8'h18); poke(8'h10,8'h0B); // (failure) LDI C,0x0B
         poke(8'h11,8'hE8); poke(8'h12,8'hF0); // OUT C ; HLT
         arranca; corre(2000);
         chknout(1); chkout(0,8'hAA);
 
-        // C) SHL/SHR en la CPU -> 0x02, 0x01
+        // C) SHL/SHR in the CPU -> 0x02, 0x01
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'h81); // LDI A,0x81
         poke(8'h02,8'hB0);                    // SHL A
@@ -160,7 +161,7 @@ module cpu_directed_tb;
         arranca; corre(2000);
         chknout(2); chkout(0,8'h02); chkout(1,8'h01);
 
-        // D) Indirecto rd==rs -> OUT A = 0x55
+        // D) Indirect rd==rs -> OUT A = 0x55
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'h20); // LDI A,0x20
         poke(8'h02,8'h14); poke(8'h03,8'h55); // LDI B,0x55
@@ -171,7 +172,7 @@ module cpu_directed_tb;
         arranca; corre(2000);
         chknout(1); chkout(0,8'h55);
 
-        // E) Pila LIFO -> 0x22, 0x11
+        // E) LIFO stack -> 0x22, 0x11
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'h11); // LDI A,0x11
         poke(8'h02,8'h14); poke(8'h03,8'h22); // LDI B,0x22
@@ -185,7 +186,7 @@ module cpu_directed_tb;
         arranca; corre(2000);
         chknout(2); chkout(0,8'h22); chkout(1,8'h11);
 
-        // F) IRQ: retorno en frontera de instruccion -> OUT C = 1
+        // F) IRQ: return at instruction boundary -> OUT C = 1
         limpia_mem;
         poke(8'h00,8'hF2);                    // EI
         poke(8'h01,8'h10); poke(8'h02,8'h77); // LDI A,0x77
@@ -196,7 +197,7 @@ module cpu_directed_tb;
         arranca; irq = 1; corre(2000);
         chknout(1); chkout(0,8'h01);
 
-        // G) Inmediatos ADDI/SUBI/CMPI y flag V -> 0x0F, 0x09, 0x09, 0x80
+        // G) Immediates ADDI/SUBI/CMPI and flag V -> 0x0F, 0x09, 0x09, 0x80
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'h0A); // LDI  A,10
         poke(8'h02,8'h11); poke(8'h03,8'h05); // ADDI A,5   -> 15
@@ -205,19 +206,19 @@ module cpu_directed_tb;
         poke(8'h07,8'hE0);                    // OUT A      -> 9
         poke(8'h08,8'h13); poke(8'h09,8'h09); // CMPI A,9   -> Z=1
         poke(8'h0A,8'hD0); poke(8'h0B,8'h0E); // JZ 0x0E
-        poke(8'h0C,8'h10); poke(8'h0D,8'hFF); // LDI  A,0xFF (no debe ejecutarse)
+        poke(8'h0C,8'h10); poke(8'h0D,8'hFF); // LDI  A,0xFF (must not execute)
         poke(8'h0E,8'hE0);                    // OUT A      -> 9
         poke(8'h0F,8'h14); poke(8'h10,8'h7F); // LDI  B,0x7F
         poke(8'h11,8'h15); poke(8'h12,8'h01); // ADDI B,1   -> 0x80, V=1
         poke(8'h13,8'hD8); poke(8'h14,8'h17); // JVS 0x17
-        poke(8'h15,8'h14); poke(8'h16,8'h00); // LDI  B,0 (no debe ejecutarse)
+        poke(8'h15,8'h14); poke(8'h16,8'h00); // LDI  B,0 (must not execute)
         poke(8'h17,8'hE4);                    // OUT B      -> 0x80
         poke(8'h18,8'hF0);                    // HLT
         arranca; corre(2000);
         chknout(4); chkout(0,8'h0F); chkout(1,8'h09);
         chkout(2,8'h09); chkout(3,8'h80);
 
-        // H) Indexado LD/ST rd,[rs+off] -> OUT D = 0xAA
+        // H) Indexed LD/ST rd,[rs+off] -> OUT D = 0xAA
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'hAA); // LDI A,0xAA
         poke(8'h02,8'h14); poke(8'h03,8'h30); // LDI B,0x30
@@ -229,29 +230,29 @@ module cpu_directed_tb;
         arranca; corre(2000);
         chknout(1); chkout(0,8'hAA);
 
-        // I) Saltos con signo (JLT/JGE) -> OUT: 0x01, 0xFF
+        // I) Signed jumps (JLT/JGE) -> OUT: 0x01, 0xFF
         limpia_mem;
         poke(8'h00,8'h10); poke(8'h01,8'hFF); // LDI A,0xFF (-1)
         poke(8'h02,8'h14); poke(8'h03,8'h01); // LDI B,1
         poke(8'h04,8'hA1);                    // CMP A,B     -> -1 < 1 (N!=V)
         poke(8'h05,8'hD4); poke(8'h06,8'h09); // JLT 0x09
-        poke(8'h07,8'h14); poke(8'h08,8'h7F); // LDI B,0x7F (no debe ejecutarse)
+        poke(8'h07,8'h14); poke(8'h08,8'h7F); // LDI B,0x7F (must not execute)
         poke(8'h09,8'hE4);                    // OUT B       -> 1
         poke(8'h0A,8'hA4);                    // CMP B,A     ->  1 > -1 (N==V)
         poke(8'h0B,8'hD5); poke(8'h0C,8'h0F); // JGE 0x0F
-        poke(8'h0D,8'h10); poke(8'h0E,8'h7F); // LDI A,0x7F (no debe ejecutarse)
+        poke(8'h0D,8'h10); poke(8'h0E,8'h7F); // LDI A,0x7F (must not execute)
         poke(8'h0F,8'hE0);                    // OUT A       -> 0xFF
         poke(8'h10,8'hF0);                    // HLT
         arranca; corre(2000);
         chknout(2); chkout(0,8'h01); chkout(1,8'hFF);
 
-        // J) E/S portada: IN n,rd y OUT n,rd (in_data = 0x12)
+        // J) Ported I/O: IN n,rd and OUT n,rd (in_data = 0x12)
         limpia_mem;
         in_data = 8'h12;
         poke(8'h00,8'hF9); poke(8'h01,8'h06); // IN 2, B   -> B = in_data = 0x12
-        poke(8'h02,8'hF8); poke(8'h03,8'h07); // OUT 3, B  -> puerto 3, 0x12
+        poke(8'h02,8'hF8); poke(8'h03,8'h07); // OUT 3, B  -> port 3, 0x12
         poke(8'h04,8'h10); poke(8'h05,8'hAB); // LDI A,0xAB
-        poke(8'h06,8'hE0);                    // OUT A     -> puerto 0, 0xAB
+        poke(8'h06,8'hE0);                    // OUT A     -> port 0, 0xAB
         poke(8'h07,8'hF0);                    // HLT
         arranca; corre(2000);
         chknout(2);
@@ -259,9 +260,9 @@ module cpu_directed_tb;
         chkout(1,8'hAB); chkport(1,2'd0);
         in_data = 8'h00;
 
-        if (errors == 0) $display("CPU_DIRECTED: TODOS LOS TESTS PASARON");
-        else             $display("CPU_DIRECTED: %0d FALLOS", errors);
-        if (errors != 0) $fatal(1, "CPU_DIRECTED: hay fallos, revisa arriba");
+        if (errors == 0) $display("CPU_DIRECTED: ALL TESTS PASSED");
+        else             $display("CPU_DIRECTED: %0d FAILURES", errors);
+        if (errors != 0) $fatal(1, "CPU_DIRECTED: there are failures, check above");
         $finish;
     end
 

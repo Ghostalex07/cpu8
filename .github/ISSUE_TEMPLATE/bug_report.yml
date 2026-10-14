@@ -1,25 +1,25 @@
-name: Informe de fallo
-description: Notifica un comportamiento incorrecto en la CPU, el ensamblador o las herramientas.
+name: Bug report
+description: Report incorrect behaviour in the CPU, the assembler or the tools.
 title: "[Bug] "
 labels: ["bug"]
 body:
   - type: markdown
     attributes:
       value: |
-        Gracias por tomarte el tiempo de rellenar este informe. Cuanto más
-        concreta sea la reproducción, más fácil será arreglarlo.
+        Thanks for taking the time to fill in this report. The more concrete
+        the reproduction, the easier it will be to fix.
   - type: textarea
-    id: descripcion
+    id: description
     attributes:
-      label: Descripción
-      description: ¿Qué ocurre? ¿Qué esperabas que ocurriera?
+      label: Description
+      description: What happens? What did you expect to happen?
     validations:
       required: true
   - type: textarea
-    id: reproducir
+    id: reproduce
     attributes:
-      label: Pasos para reproducir
-      description: Comandos, programa `.asm` o secuencia que provoca el fallo.
+      label: Steps to reproduce
+      description: Commands, `.asm` program or sequence that triggers the failure.
       placeholder: |
         1. cd cpu8
         2. make test
@@ -30,33 +30,33 @@ body:
   - type: dropdown
     id: area
     attributes:
-      label: Área afectada
+      label: Affected area
       multiple: true
       options:
         - RTL (rtl/)
         - Testbenches (tb/)
-        - Ensamblador (asm/)
-        - Desensamblador (tools/disasm.py)
-        - Modelo de referencia / ISS (tools/iss.py)
+        - Assembler (asm/)
+        - Disassembler (tools/disasm.py)
+        - Reference model / ISS (tools/iss.py)
         - Difftest / regress
-        - Documentación
+        - Documentation
         - CI
-        - Otro
+        - Other
     validations:
       required: true
   - type: textarea
-    id: salida
+    id: output
     attributes:
-      label: Salida relevante
-      description: Mensajes de error, trace de la traza o salida de `make`.
+      label: Relevant output
+      description: Error messages, trace output or `make` output.
       render: shell
     validations:
       required: false
   - type: input
-    id: versiones
+    id: versions
     attributes:
-      label: Versiones del entorno
-      description: Versiones de iverilog, verilator, python3 (si son relevantes).
+      label: Environment versions
+      description: Versions of iverilog, verilator, python3 (if relevant).
       placeholder: "iverilog 12.0, verilator 5.x, python 3.12"
     validations:
       required: false

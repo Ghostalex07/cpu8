@@ -1,16 +1,16 @@
 `timescale 1ns/1ps
 `default_nettype none
 // ============================================================================
-//  cpu_sim.v - envoltorio SOLO para Verilator (Fase 7.6)
+//  cpu_sim.v - Verilator-ONLY wrapper (Phase 7.6)
 //
-//  Instancia la CPU y carga el programa en su RAM desde el fichero indicado
-//  con +hex=<ruta> (via $readmemh).  El reloj, el reset y la senal irq los
-//  controla el banco de pruebas en C++ (tb/verilator/sim_main.cpp).
+//  Instantiates the CPU and loads the program into its RAM from the file given
+//  with +hex=<path> (via $readmemh).  The clock, the reset and the irq signal are
+//  controlled by the C++ testbench (tb/verilator/sim_main.cpp).
 //
-//  No forma parte del diseno sintetizable: es solo la "placa" de simulacion.
+//  It is not part of the synthesizable design: it is only the simulation "board".
 // ============================================================================
 module cpu_sim #(
-    parameter [7:0] IRQ_VECTOR = 8'h10   // direccion del manejador de IRQ
+    parameter [7:0] IRQ_VECTOR = 8'h10   // address of the IRQ handler
 ) (
     input  wire       clk,
     input  wire       rst,
@@ -35,7 +35,7 @@ module cpu_sim #(
         .out_port(out_port)
     );
 
-    // Ruta del fichero .hex con el programa (llega como +hex=<ruta>).
+    // Path of the .hex file with the program (arrives as +hex=<path>).
     reg [8*256-1:0] hexfile;
 
     initial begin

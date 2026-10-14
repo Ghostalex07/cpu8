@@ -1,27 +1,27 @@
 # ============================================================================
-#  Makefile del proyecto cpu8
+#  cpu8 project Makefile
 #
-#  Uso:
-#    make test                -> tests de modulo + ensambla y verifica programs/*.asm
-#    make irqtest             -> test de interrupciones (irq.asm con irq activo)
-#    make sim  PROG=programs/foo  -> ensambla foo.asm y simula la CPU completa
-#    make wave PROG=programs/foo  -> igual que sim, y abre GTKWave con la traza
-#    make asm  PROG=programs/foo  -> solo ensambla
-#    make clean               -> borra los artefactos de build/
+#  Usage:
+#    make test                -> module tests + assembles and verifies programs/*.asm
+#    make irqtest             -> interrupt test (irq.asm with irq active)
+#    make sim  PROG=programs/foo  -> assembles foo.asm and simulates the full CPU
+#    make wave PROG=programs/foo  -> same as sim, and opens GTKWave with the trace
+#    make asm  PROG=programs/foo  -> assemble only
+#    make clean               -> removes the build/ artifacts
 #
-#  Herramientas (se pueden sobrescribir): iverilog, vvp, gtkwave, python3.
+#  Tools (can be overridden): iverilog, vvp, gtkwave, python3.
 # ============================================================================
 
 IVERILOG ?= iverilog
 VVP      ?= vvp
 GTKWAVE  ?= gtkwave
 PYTHON   ?= python3
-# Ruff para el lint del codigo Python (config en ruff.toml); `pip install ruff`.
+# Ruff for linting the Python code (config in ruff.toml); `pip install ruff`.
 RUFF     ?= ruff
-# Verilator (Fase 7.6): usa el del PATH o, si no, el instalado en ~/.local/bin.
+# Verilator (Phase 7.6): uses the one from PATH or, if not, the one installed in ~/.local/bin.
 VERILATOR ?= $(shell command -v verilator 2>/dev/null || echo $(HOME)/.local/bin/verilator)
-# Flujo FPGA (Fase 7.6): yosys + nextpnr-ice40 + icepack.  Se pueden usar los del
-# PATH o los paquetes YoWASP (pip install yowasp-yosys yowasp-nextpnr-ice40).
+# FPGA flow (Phase 7.6): yosys + nextpnr-ice40 + icepack.  The ones from
+# PATH can be used, or the YoWASP packages (pip install yowasp-yosys yowasp-nextpnr-ice40).
 YOSYS    ?= $(shell command -v yosys 2>/dev/null || command -v yowasp-yosys 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys)
 NEXTPNR  ?= $(shell command -v nextpnr-ice40 2>/dev/null || echo $(HOME)/.local/bin/yowasp-nextpnr-ice40)
 ICEPACK  ?= $(shell command -v icepack 2>/dev/null || echo $(HOME)/.local/bin/yowasp-icepack)
@@ -36,30 +36,30 @@ PROG_DIR = programs
 BUILD    = build
 VL_DIR   = $(BUILD)/verilator
 
-# Todos los testbenches: tb/<modulo>_tb.v
+# All the testbenches: tb/<module>_tb.v
 TB_SRCS  = $(wildcard $(TB_DIR)/*_tb.v)
-# cpu_tb.v es especial: necesita un programa (+hex) y su lista esperada (+exp),
-# asi que no se ejecuta en el bucle de tests de modulo sino con los programas.
+# cpu_tb.v is special: it needs a program (+hex) and its expected list (+exp),
+# so it is not run in the module test loop but with the programs.
 CPU_TB   = $(TB_DIR)/cpu_tb.v
-# irq_tb.v tambien es especial: instancia la CPU con IRQ_VECTOR=0x10 y activa la
-# senal irq; se ejecuta con su propio programa irq.asm en la diana irqtest.
+# irq_tb.v is also special: it instantiates the CPU with IRQ_VECTOR=0x10 and asserts
+# the irq signal; it is run with its own program irq.asm in the irqtest target.
 IRQ_TB   = $(TB_DIR)/irq_tb.v
-# cpu_trace_tb.v es una herramienta (debugger de traza): necesita un +hex y no
-# forma parte del bucle de tests de modulo.
+# cpu_trace_tb.v is a tool (trace debugger): it needs a +hex and is
+# not part of the module test loop.
 TRACE_TB = $(TB_DIR)/cpu_trace_tb.v
-# cpu_dump_tb.v es el volcado maquina-legible que usa el fuzz diferencial
-# (tools/difftest.py): necesita un +hex y no va en el bucle de tests de modulo.
+# cpu_dump_tb.v is the machine-readable dump used by the differential fuzz
+# (tools/difftest.py): it needs a +hex and is not in the module test loop.
 DUMP_TB  = $(TB_DIR)/cpu_dump_tb.v
 MOD_TB   = $(filter-out $(CPU_TB) $(IRQ_TB) $(TRACE_TB) $(DUMP_TB),$(TB_SRCS))
 
-# Programas demo: cada programs/<nombre>.asm con su programs/<nombre>.ref.
-# irq.asm se excluye: necesita la senal irq, que solo maneja irq_tb (irqtest).
+# Demo programs: each programs/<name>.asm with its programs/<name>.ref.
+# irq.asm is excluded: it needs the irq signal, which only irq_tb handles (irqtest).
 PROGS    = $(filter-out $(PROG_DIR)/irq.asm,$(wildcard $(PROG_DIR)/*.asm))
 
-# Programa por defecto para sim/wave (sin extensión .asm)
+# Default program for sim/wave (without the .asm extension)
 PROG ?= $(PROG_DIR)/countdown
 
-# FPGA: carpeta con el top y las constraints; programa a sintetizar.
+# FPGA: folder with the top and the constraints; program to synthesize.
 FPGA_DIR  = fpga
 FPGA_PROG ?= countdown
 
@@ -70,14 +70,14 @@ all: test
 dirs:
 	@mkdir -p $(BUILD)
 
-## --- Suite completa: tests de modulo + tests de programa + interrupciones ---
+## --- Full suite: module tests + program tests + interrupts ---
 test: modtests progtests irqtest
 
-## --- Tests de modulos individuales (ALU, RAM, PC, registros) ---
-## Cada testbench se compila junto con TODO el RTL y se ejecuta.
+## --- Individual module tests (ALU, RAM, PC, registers) ---
+## Each testbench is compiled together with ALL the RTL and run.
 modtests: dirs
 	@if [ -z "$(MOD_TB)" ]; then \
-	  echo "No hay testbenches de modulo en $(TB_DIR)/ todavia."; \
+	  echo "There are no module testbenches in $(TB_DIR)/ yet."; \
 	else \
 	  set -e; \
 	  for tb in $(MOD_TB); do \
@@ -89,40 +89,40 @@ modtests: dirs
 	  done; \
 	fi
 
-## --- Test de interrupciones: ensambla irq.asm y lo ejecuta con irq activo ---
+## --- Interrupt test: assembles irq.asm and runs it with irq active ---
 irqtest: dirs
 	@set -e; \
-	echo "=== irq_tb (interrupciones) ==="; \
+	echo "=== irq_tb (interrupts) ==="; \
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
 	$(IVERILOG) $(IVFLAGS) -s irq_tb -o $(BUILD)/irq_tb.vvp $(IRQ_TB) $(RTL_DIR)/*.v; \
 	$(VVP) $(BUILD)/irq_tb.vvp +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref
 
-## --- Tests de programa: ensambla cada .asm y lo ejecuta comparando la salida ---
-## Cada programa necesita un programs/<nombre>.ref con las salidas esperadas.
+## --- Program tests: assembles each .asm and runs it comparing the output ---
+## Each program needs a programs/<name>.ref with the expected outputs.
 progtests: dirs
 	@set -e; \
 	$(IVERILOG) $(IVFLAGS) -s cpu_tb -o $(BUILD)/cpu_prog.vvp $(CPU_TB) $(RTL_DIR)/*.v; \
 	for p in $(PROGS); do \
 	  base=$${p%.asm}; ref=$$base.ref; \
-	  echo "=== programa $$(basename $$base) ==="; \
-	  if [ ! -f $$ref ]; then echo "FALTA $$ref (salida esperada)"; exit 1; fi; \
+	  echo "=== program $$(basename $$base) ==="; \
+	  if [ ! -f $$ref ]; then echo "MISSING $$ref (expected output)"; exit 1; fi; \
 	  $(PYTHON) $(ASM_DIR)/assembler.py $$p -o $$base.hex; \
 	  $(VVP) $(BUILD)/cpu_prog.vvp +hex=$$base.hex +exp=$$ref; \
 	  echo ""; \
 	done
 
-## --- Ensamblar un programa .asm -> .hex ---
+## --- Assemble a .asm program -> .hex ---
 asm: dirs
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG).asm -o $(PROG).hex
 
-## --- Simular la CPU completa con un programa ---
-## Si existe asm/assembler.py se ensambla el .asm -> .hex; si no (Fase 4),
-## se usa el .hex ya presente en disco.
+## --- Simulate the full CPU with a program ---
+## If asm/assembler.py exists the .asm -> .hex is assembled; if not (Phase 4),
+## the .hex already present on disk is used.
 sim: dirs
 	@if [ -f $(ASM_DIR)/assembler.py ]; then \
 	  $(PYTHON) $(ASM_DIR)/assembler.py $(PROG).asm -o $(PROG).hex; \
 	else \
-	  test -f $(PROG).hex || { echo "Falta $(PROG).hex (y aun no hay ensamblador)"; exit 1; }; \
+	  test -f $(PROG).hex || { echo "Missing $(PROG).hex (and there is no assembler yet)"; exit 1; }; \
 	fi
 	$(IVERILOG) $(IVFLAGS) -s cpu_tb -o $(BUILD)/cpu_sim.vvp $(TB_DIR)/cpu_tb.v $(RTL_DIR)/*.v
 	@if [ -f $(PROG).ref ]; then \
@@ -131,12 +131,12 @@ sim: dirs
 	  $(VVP) $(BUILD)/cpu_sim.vvp +hex=$(PROG).hex; \
 	fi
 
-## --- Simular y ver formas de onda (abre GTKWave con las señales ya puestas) ---
+## --- Simulate and view waveforms (opens GTKWave with the signals already set up) ---
 wave: sim
 	$(GTKWAVE) cpu.gtkw &
 
-## --- Debugger de traza: una linea por instruccion retirada (estado de la CPU) ---
-## Uso: make trace PROG=programs/foo   (acepta IN=<byte> para fijar la entrada)
+## --- Trace debugger: one line per retired instruction (CPU state) ---
+## Usage: make trace PROG=programs/foo   (accepts IN=<byte> to set the input)
 trace: dirs
 	@if [ -f $(ASM_DIR)/assembler.py ] && [ -f $(PROG).asm ]; then \
 	  $(PYTHON) $(ASM_DIR)/assembler.py $(PROG).asm -o $(PROG).hex; \
@@ -144,49 +144,49 @@ trace: dirs
 	$(IVERILOG) $(IVFLAGS) -s cpu_trace_tb -o $(BUILD)/trace.vvp $(TRACE_TB) $(RTL_DIR)/*.v
 	$(VVP) $(BUILD)/trace.vvp +hex=$(PROG).hex $(if $(IN),+in=$(IN),)
 
-## --- Desensamblar un programa .hex a un listado legible ---
-## Uso: make disasm PROG=programs/foo   (o FICHERO=programs/foo.hex)
+## --- Disassemble a .hex program to a readable listing ---
+## Usage: make disasm PROG=programs/foo   (or HEXFILE=programs/foo.hex)
 disasm:
-	$(PYTHON) $(TOOLS_DIR)/disasm.py $(if $(FICHERO),$(FICHERO),$(PROG).hex)
+	$(PYTHON) $(TOOLS_DIR)/disasm.py $(if $(HEXFILE),$(HEXFILE),$(PROG).hex)
 
-## --- Tests de las herramientas Python (ensamblador + tabla ISA + desensamblador + ISS) ---
+## --- Tests for the Python tools (assembler + ISA table + disassembler + ISS) ---
 pytools:
 	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
 	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py -q
 
-## --- Lint del codigo Python con Ruff (config en ruff.toml) ---
+## --- Lint of the Python code with Ruff (config in ruff.toml) ---
 lint:
 	$(RUFF) check .
 
-## --- Genera la tabla de opcodes docs/OPCODES.md desde la fuente unica asm/isa_table.py ---
+## --- Generate the docs/OPCODES.md opcode table from the single source asm/isa_table.py ---
 docs:
 	$(PYTHON) $(TOOLS_DIR)/gen_docs.py
 
-## --- Comprueba que docs/OPCODES.md esta al dia (para CI; no escribe) ---
+## --- Check that docs/OPCODES.md is up to date (for CI; does not write) ---
 docs-check:
 	$(PYTHON) $(TOOLS_DIR)/gen_docs.py --check
 
-## --- Fuzz diferencial: RTL (tb/cpu_dump_tb.v) contra el modelo tools/iss.py ---
-## Ejecuta cada programa en el RTL y en el modelo de referencia y compara el
-## estado tras cada instruccion (registros, flags, SP, PC, RAM, OUT).
-## Uso: make difftest                 (100 aleatorios + los programs/*.asm)
+## --- Differential fuzz: RTL (tb/cpu_dump_tb.v) against the model tools/iss.py ---
+## Runs each program on the RTL and on the reference model and compares the
+## state after each instruction (registers, flags, SP, PC, RAM, OUT).
+## Usage: make difftest                 (100 random + the programs/*.asm)
 ##      make difftest COUNT=500 SEED=7
-##      make difftest ONLYPROGS=1     (solo los programs/*.asm)
+##      make difftest ONLYPROGS=1     (only the programs/*.asm)
 difftest: dirs
 	$(PYTHON) $(TOOLS_DIR)/difftest.py --count $(if $(COUNT),$(COUNT),100) \
 	  --seed $(if $(SEED),$(SEED),1) $(if $(ONLYPROGS),--progs,)
 
-## --- Harness de regresion: bytes + trazas doradas + fuzz de ida y vuelta ---
+## --- Regression harness: bytes + golden traces + round-trip fuzz ---
 regress: dirs
 	$(PYTHON) $(TOOLS_DIR)/regress.py
 
-## --- (Re)genera la referencia dorada de regresion (usar tras cambios validados) ---
+## --- (Re)generate the golden regression reference (use after validated changes) ---
 regress-update: dirs
 	$(PYTHON) $(TOOLS_DIR)/regress.py --update
 
-## --- Simulacion con Verilator (Fase 7.6) ---
-## Compila el RTL con Verilator a un modelo C++ y lo ejecuta sobre los mismos
-## programas que la simulacion con iverilog, comparando con los .ref.
+## --- Simulation with Verilator (Phase 7.6) ---
+## Compiles the RTL with Verilator to a C++ model and runs it on the same
+## programs as the iverilog simulation, comparing with the .ref.
 $(VL_DIR)/Vcpu_sim: $(TB_DIR)/verilator/sim_main.cpp $(TB_DIR)/verilator/cpu_sim.v $(RTL_DIR)/*.v
 	$(VERILATOR) --cc --exe --build -j -O3 \
 	  --top-module cpu_sim -Wno-UNOPTFLAT \
@@ -207,21 +207,21 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
 	$(VL_DIR)/Vcpu_sim +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref +irq=1
 
-## --- Solo analisis (lint) de Verilator sobre el RTL ---
+## --- Analysis only (lint) of Verilator on the RTL ---
 vlint:
 	$(VERILATOR) --lint-only -Wall --top-module cpu $(RTL_DIR)/*.v
 
-## --- FPGA (Fase 7.6): sintesis para iCEstick (iCE40HX1K, TQ144) ---
-## Ensambla FPGA_PROG, carga su .hex en la RAM (via -DRAM_INIT) y genera el
-## bitstream build/top.bin con yosys + nextpnr-ice40 + icepack.
-##   make fpga                    (usa programs/countdown.asm)
+## --- FPGA (Phase 7.6): synthesis for iCEstick (iCE40HX1K, TQ144) ---
+## Assembles FPGA_PROG, loads its .hex into RAM (via -DRAM_INIT) and generates the
+## bitstream build/top.bin with yosys + nextpnr-ice40 + icepack.
+##   make fpga                    (uses programs/countdown.asm)
 ##   make fpga FPGA_PROG=fibonacci
 fpga: dirs
 	@set -e; \
-	echo "=== FPGA: ensamblar $(FPGA_PROG) y preparar imagen de memoria ==="; \
+	echo "=== FPGA: assemble $(FPGA_PROG) and prepare memory image ==="; \
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/$(FPGA_PROG).asm; \
 	cp $(PROG_DIR)/$(FPGA_PROG).hex $(FPGA_DIR)/program.hex; \
-	echo "=== FPGA: sintesis (yosys) ==="; \
+	echo "=== FPGA: synthesis (yosys) ==="; \
 	$(YOSYS) -p "read_verilog -DRAM_INIT -DFPGA_RAM64 $(wildcard $(RTL_DIR)/*.v) $(FPGA_DIR)/top.v; synth_ice40 -top top -json $(BUILD)/top.json"; \
 	echo "=== FPGA: place & route (nextpnr) ==="; \
 	$(NEXTPNR) --hx1k --package tq144 --json $(BUILD)/top.json \
@@ -237,25 +237,25 @@ clean:
 	pytools lint docs docs-check difftest regress regress-update verilator \
 	vlint fpga clean help check
 
-## --- Bateria completa local: lo mismo que ejecuta la CI ---
+## --- Full local battery: the same as CI runs ---
 check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
 
 help:
-	@echo "make test                          (modulos + programas demo + irq)"
-	@echo "make verilator                     (simula el RTL con Verilator)"
-	@echo "make vlint                         (solo analisis -Wall del RTL con Verilator)"
-	@echo "make fpga FPGA_PROG=<nombre>       (sintetiza un bitstream para iCEstick)"
-	@echo "make sim  PROG=programs/<nombre>   (ensambla y simula; compara con .ref)"
-	@echo "make wave PROG=programs/<nombre>   (ensambla y simula; abre GTKWave)"
-	@echo "make trace PROG=programs/<nombre>  (traza: una linea por instruccion)"
-	@echo "make disasm PROG=programs/<nombre> (desensambla el .hex a un listado)"
-	@echo "make pytools                       (pytest de ensamblador, tabla ISA, desensamblador e ISS)"
-	@echo "make lint                          (ruff: lint del codigo Python)"
-	@echo "make docs                          (regenera docs/OPCODES.md desde la tabla ISA)"
-	@echo "make docs-check                    (comprueba que docs/OPCODES.md esta al dia)"
-	@echo "make difftest [COUNT=N] [SEED=S]   (fuzz diferencial: RTL vs modelo de referencia)"
-	@echo "make regress                       (regresion: bytes + trazas + fuzz)"
-	@echo "make regress-update                (regenera la referencia dorada)"
-	@echo "make check                         (bateria completa: lo mismo que la CI)"
-	@echo "make asm  PROG=programs/<nombre>   (solo ensambla)"
+	@echo "make test                          (modules + demo programs + irq)"
+	@echo "make verilator                     (simulates the RTL with Verilator)"
+	@echo "make vlint                         (Verilator -Wall analysis only of the RTL)"
+	@echo "make fpga FPGA_PROG=<name>         (synthesizes a bitstream for iCEstick)"
+	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"
+	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"
+	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"
+	@echo "make disasm PROG=programs/<name>   (disassembles the .hex to a listing)"
+	@echo "make pytools                       (pytest for assembler, ISA table, disassembler and ISS)"
+	@echo "make lint                          (ruff: lint of the Python code)"
+	@echo "make docs                          (regenerates docs/OPCODES.md from the ISA table)"
+	@echo "make docs-check                    (checks that docs/OPCODES.md is up to date)"
+	@echo "make difftest [COUNT=N] [SEED=S]   (differential fuzz: RTL vs reference model)"
+	@echo "make regress                       (regression: bytes + traces + fuzz)"
+	@echo "make regress-update                (regenerates the golden reference)"
+	@echo "make check                         (full battery: the same as CI)"
+	@echo "make asm  PROG=programs/<name>     (assemble only)"
 	@echo "make clean"

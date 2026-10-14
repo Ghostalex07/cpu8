@@ -1,4 +1,4 @@
-=== traza de programs/primes.hex ===
+=== trace of programs/primes.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   02   00   00   00   0 0 0 0  f0      
   02   40   02   00   00   00   0 0 0 0  f0      
@@ -2759,4 +2759,4 @@
   0c   a1   20   20   00   00   1 1 0 0  f0      
   0d   d2   20   20   00   00   1 1 0 0  f0      
   38   f0   20   20   00   00   1 1 0 0  f0      
-(HLT tras 2759 instrucciones)
+(HLT after 2759 instructions)

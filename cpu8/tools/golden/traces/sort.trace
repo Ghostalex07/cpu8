@@ -1,4 +1,4 @@
-=== traza de programs/sort.hex ===
+=== trace of programs/sort.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   05   00   00   00   0 0 0 0  f0      
   02   40   05   00   00   00   0 0 0 0  f0      
@@ -281,4 +281,4 @@
   2a   06   09   34   00   09   1 0 0 0  f0      
   2b   d1   09   34   00   09   1 0 0 0  f0      
   2d   f0   09   34   00   09   1 0 0 0  f0      
-(HLT tras 281 instrucciones)
+(HLT after 281 instructions)

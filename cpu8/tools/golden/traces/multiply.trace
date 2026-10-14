@@ -1,4 +1,4 @@
-=== traza de programs/multiply.hex ===
+=== trace of programs/multiply.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   06   00   00   00   0 0 0 0  f0      
   02   14   06   07   00   00   0 0 0 0  f0      
@@ -42,4 +42,4 @@
   08   67   06   ff   2a   01   0 0 1 0  f0      
   09   d3   06   ff   2a   01   0 0 1 0  f0      
   0f   f0   06   ff   2a   01   0 0 1 0  f0      
-(HLT tras 42 instrucciones)
+(HLT after 42 instructions)

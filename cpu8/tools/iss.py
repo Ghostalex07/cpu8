@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
-"""Simulador de referencia (ISS) de la CPU cpu8.
+"""Reference simulator (ISS) for the cpu8 CPU.
 
-Modelo *funcional* por instruccion del conjunto de instrucciones descrito en
-``docs/ISA.md`` y realizado en ``rtl/`` (control.v + cpu.v + alu.v).  No modela
-ciclos: cada instruccion se ejecuta de una vez, pero reproduce exactamente el
-**estado arquitectonico** tras cada una (registros A-D, flags Z/C/N/V, I, SP,
-PC) y el contenido de la RAM.
+*Functional* per-instruction model of the instruction set described in
+``docs/ISA.md`` and implemented in ``rtl/`` (control.v + cpu.v + alu.v).  It does
+not model cycles: each instruction executes at once, but it reproduces exactly
+the **architectural state** after each one (registers A-D, flags Z/C/N/V, I, SP,
+PC) and the contents of RAM.
 
-Su razon de ser es el **fuzz diferencial** (``tools/difftest.py``): se ejecuta un
-programa en el RTL (con ``tb/cpu_dump_tb.v``) y en este modelo y se comparan,
-instruccion a instruccion.  Un fallo aqui o un fallo alla significa discrepancia
-entre el modelo y el hardware.
+Its reason for existing is the **differential fuzz** (``tools/difftest.py``): a
+program is run on the RTL (with ``tb/cpu_dump_tb.v``) and on this model and they
+are compared instruction by instruction.  A failure here or a failure there
+means a discrepancy between the model and the hardware.
 
-Ambos comparten el mismo convenio de entrada que los testbenches:
-``in_data = 0x10 + puerto`` (el puerto ``n`` lee ``0x10+n``).
+Both share the same input convention as the testbenches:
+``in_data = 0x10 + port`` (port ``n`` reads ``0x10+n``).
 
-Uso::
+Usage::
 
     python3 tools/iss.py programs/countdown.hex --trace
 """
@@ -28,22 +28,22 @@ from pathlib import Path
 MASK = 0xFF
 REGS = ("A", "B", "C", "D")
 
-# Codigos de operacion de la ALU (coinciden con alu.v y con el opcode de la ISA).
+# ALU operation codes (match alu.v and the ISA opcode).
 ADD, SUB, AND, OR, XOR, CMP, SHIFT, MUL, DIV = 0x5, 0x6, 0x7, 0x8, 0x9, 0xA, 0xB, 0xC, 0xD
 
-# Estados de la FSM (solo para documentar la deteccion; el ISS no es ciclo a ciclo).
+# FSM states (only to document detection; the ISS is not cycle-accurate).
 S_FETCH, S_OPR, S_EXEC, S_IRQ, S_HLT = 0, 1, 2, 3, 4
 
 
 def needs_operand(instr: int) -> bool:
-    """True si la instruccion ocupa 2 bytes (misma regla que control.v)."""
+    """True if the instruction takes 2 bytes (same rule as control.v)."""
     fop = instr >> 4
     return fop in (0x1, 0x3, 0x4, 0xC, 0xD) or instr in (
         0xF4, 0xF5, 0xF6, 0xF7, 0xF8, 0xF9)
 
 
 def alu(op: int, sh: int, a: int, b: int) -> tuple[int, int, int, int, int]:
-    """Replica alu.v: devuelve (y, c, v, z, n)."""
+    """Replicates alu.v: returns (y, c, v, z, n)."""
     a &= MASK
     b &= MASK
     y, c, v = b, 0, 0
@@ -82,7 +82,7 @@ def alu(op: int, sh: int, a: int, b: int) -> tuple[int, int, int, int, int]:
 
 
 def branch_cond(fam: int, rs: int, fz: int, fc: int, fn: int, fv: int) -> int:
-    """Replica la condicion de salto Jcc de control.v."""
+    """Replicates the Jcc branch condition of control.v."""
     menor = fn ^ fv  # signed_lt (N != V)
     if fam == 0:
         return (fz, 1 - fz, fc, 1 - fc)[rs]
@@ -92,7 +92,7 @@ def branch_cond(fam: int, rs: int, fz: int, fc: int, fn: int, fv: int) -> int:
 
 
 class ISS:
-    """Simulador de referencia del cpu8."""
+    """Reference simulator for cpu8."""
 
     def __init__(self, mem: list[int] | None = None,
                  irq_vector: int = 0x08, in_fn=None, irq_at: int | None = None):
@@ -101,11 +101,11 @@ class ISS:
             for i, b in enumerate(mem[:256]):
                 self.mem[i] = b & MASK
         self.irq_vector = irq_vector & MASK
-        # Convenio de entrada de los testbenches: puerto n -> 0x10 + n.
+        # Testbench input convention: port n -> 0x10 + n.
         self.in_fn = in_fn or (lambda port: (0x10 + port) & MASK)
-        # Modelo del nivel de irq (None = nunca).  Si es un entero, se replica el
-        # convenio del testbench diferencial: irq activo cuando ya se han retirado
-        # >= irq_at instrucciones (ver tb/cpu_dump_tb.v y run()).
+        # irq level model (None = never).  If it is an integer, the differential
+        # testbench convention is replicated: irq active once >= irq_at
+        # instructions have been retired (see tb/cpu_dump_tb.v and run()).
         self.irq_at = irq_at
         self.reset()
 
@@ -122,7 +122,7 @@ class ISS:
         self.rows: list[tuple] = []
         self.outs: list[tuple[int, int]] = []
 
-    # -- una instruccion -----------------------------------------------------
+    # -- one instruction -----------------------------------------------------
     def step(self) -> tuple:
         pc0 = self.PC
         instr = self.mem[self.PC]
@@ -139,7 +139,7 @@ class ISS:
         reg = self.regs
         out_valid = 0
 
-        # --- escribir resultado + flags (helpers) ---
+        # --- write result + flags (helpers) ---
         def set_flags(y, c, v, z, n, we=True, c_we=True):
             if we:
                 self.fz, self.fn, self.fv = z, n, v
@@ -154,8 +154,8 @@ class ISS:
                 set_flags(y, c, v, z, n, we=True, c_we=c_we)
             return y
 
-        if op == 0x0:                       # INC/DEC/PUSH/POP (registro en rs)
-            if rd == 0b00:                  # INC rs: Z,N,V si; C no
+        if op == 0x0:                       # INC/DEC/PUSH/POP (register in rs)
+            if rd == 0b00:                  # INC rs: Z,N,V yes; C no
                 do_alu(ADD, 0, reg[rs], 1, dst=rs, c_we=False)
             elif rd == 0b01:                # DEC rs
                 do_alu(SUB, 0, reg[rs], 1, dst=rs, c_we=False)
@@ -167,13 +167,13 @@ class ISS:
                 reg[rs] = self.mem[self.SP]
         elif op == 0x1:                     # LDI / ADDI / SUBI / CMPI
             sub = rs
-            if sub == 0b00:                 # LDI rd, imm (sin flags)
+            if sub == 0b00:                 # LDI rd, imm (no flags)
                 reg[rd] = opnd
             elif sub == 0b01:               # ADDI
                 do_alu(ADD, 0, reg[rd], opnd, dst=rd)
             elif sub == 0b10:               # SUBI
                 do_alu(SUB, 0, reg[rd], opnd, dst=rd)
-            else:                           # CMPI (solo flags)
+            else:                           # CMPI (flags only)
                 do_alu(CMP, 0, reg[rd], opnd, dst=None)
         elif op == 0x2:                     # MOV rd,rs
             reg[rd] = reg[rs]
@@ -183,28 +183,28 @@ class ISS:
         elif op == 0x4:                     # ST rd,[a] / ST rd,[rs+off]
             addr = opnd if rs == 0 else (reg[rs] + opnd) & MASK
             self.mem[addr] = reg[rd]
-        elif op in (ADD, SUB, AND, OR, XOR):  # ALU registro-registro
+        elif op in (ADD, SUB, AND, OR, XOR):  # ALU register-register
             do_alu(op, 0, reg[rd], reg[rs], dst=rd)
         elif op == CMP:
             do_alu(CMP, 0, reg[rd], reg[rs], dst=None)
         elif op == SHIFT:                   # SHL/SHR rd (sh = rs[0])
             do_alu(SHIFT, rs & 1, reg[rd], 0, dst=rd)
         elif op == 0xC:                     # JMP / CALL
-            if rs == 0b01:                  # CALL: push direccion de retorno
+            if rs == 0b01:                  # CALL: push return address
                 self.mem[self.SP] = self.PC
                 self.SP = (self.SP - 1) & MASK
-            self.PC = opnd                  # JMP (y reservados 10/11) saltan
-        elif op == 0xD:                     # Jcc <<familia rd>>
+            self.PC = opnd                  # JMP (and reserved 10/11) jump
+        elif op == 0xD:                     # Jcc <<family rd>>
             if branch_cond(rd, rs, self.fz, self.fc, self.fn, self.fv):
                 self.PC = opnd
-        elif op == 0xE:                     # OUT rd / IN rd (puerto 0)
+        elif op == 0xE:                     # OUT rd / IN rd (port 0)
             if rs == 0b00:                  # OUT rd
                 out_valid = 1
                 self.out_data, self.out_port = reg[rd], 0
                 self.outs.append((reg[rd], 0))
             elif rs == 0b01:                # IN rd
                 reg[rd] = self.in_fn(0)
-            # rs=10/11: reservados (no-op)
+            # rs=10/11: reserved (no-op)
         elif op == 0xF:
             if instr == 0xF0:               # HLT
                 self.halted = True
@@ -215,10 +215,10 @@ class ISS:
                 self.fi = 1
             elif instr == 0xF3:             # DI
                 self.fi = 0
-            elif instr == 0xF4:             # LD rd,[rs] (indirecto)
+            elif instr == 0xF4:             # LD rd,[rs] (indirect)
                 d, s = (opnd >> 2) & 3, opnd & 3
                 reg[d] = self.mem[reg[s]]
-            elif instr == 0xF5:             # ST rd,[rs] (indirecto)
+            elif instr == 0xF5:             # ST rd,[rs] (indirect)
                 d, s = (opnd >> 2) & 3, opnd & 3
                 self.mem[reg[s]] = reg[d]
             elif instr == 0xF6:             # MUL rd,rs
@@ -227,15 +227,15 @@ class ISS:
             elif instr == 0xF7:             # DIV rd,rs
                 d, s = (opnd >> 2) & 3, opnd & 3
                 do_alu(DIV, 0, reg[d], reg[s], dst=d)
-            elif instr == 0xF8:             # OUT n,rd (puerto n)
+            elif instr == 0xF8:             # OUT n,rd (port n)
                 d, n = (opnd >> 2) & 3, opnd & 3
                 out_valid = 1
                 self.out_data, self.out_port = reg[d], n
                 self.outs.append((reg[d], n))
-            elif instr == 0xF9:             # IN n,rd (puerto n)
+            elif instr == 0xF9:             # IN n,rd (port n)
                 d, n = (opnd >> 2) & 3, opnd & 3
                 reg[d] = self.in_fn(n)
-            # 0xFA..0xFF: no-op de 1 byte (fop=0xF no exige operando)
+            # 0xFA..0xFF: 1-byte no-op (fop=0xF does not require an operand)
 
         row = (pc0, instr, self.regs[0], self.regs[1], self.regs[2], self.regs[3],
                self.fz, self.fc, self.fn, self.fv, self.SP, self.PC,
@@ -243,10 +243,11 @@ class ISS:
         return row
 
     def take_irq(self) -> None:
-        """Atiende una interrupcion (estado S_IRQ): apila PC, baja I y salta al vector.
+        """Services an interrupt (S_IRQ state): pushes PC, clears I and jumps to the vector.
 
-        No genera fila de traza: en el RTL el estado S_IRQ no pasa por S_EXEC, de
-        modo que no se retira ninguna instruccion.  Hay que replicarlo igual.
+        It does not generate a trace row: in the RTL the S_IRQ state does not go
+        through S_EXEC, so no instruction is retired.  This has to be replicated
+        the same way.
         """
         self.mem[self.SP] = self.PC
         self.SP = (self.SP - 1) & MASK
@@ -254,19 +255,20 @@ class ISS:
         self.PC = self.irq_vector
 
     def run(self, max_steps: int = 5000) -> list[tuple]:
-        """Ejecuta hasta HLT o ``max_steps``; devuelve las filas de traza.
+        """Runs until HLT or ``max_steps``; returns the trace rows.
 
-        Si ``irq_at`` no es None, el nivel de irq se modela como en el testbench
-        diferencial (``irq = (n_retiradas >= irq_at)``).  Al comienzo de cada
-        instruccion, si el flag I esta activo y hay irq pendiente, se atiende la
-        interrupcion (sin retirar instruccion, como el estado S_IRQ del RTL).
+        If ``irq_at`` is not None, the irq level is modeled as in the
+        differential testbench (``irq = (n_retired >= irq_at)``).  At the
+        beginning of each instruction, if the I flag is set and there is a
+        pending irq, the interrupt is serviced (without retiring an instruction,
+        like the RTL's S_IRQ state).
         """
         self.rows = []
         guard = 0
         limite = 10 * max_steps + 1000
         while not self.halted and len(self.rows) < max_steps:
             guard += 1
-            if guard > limite:      # red de seguridad ante bucles patologicos
+            if guard > limite:      # safety net against pathological loops
                 break
             if self.irq_at is not None and self.fi and len(self.rows) >= self.irq_at:
                 self.take_irq()
@@ -274,7 +276,7 @@ class ISS:
             self.rows.append(self.step())
         return self.rows
 
-    # -- salida en el mismo formato que tb/cpu_dump_tb.v ---------------------
+    # -- output in the same format as tb/cpu_dump_tb.v -----------------------
     @staticmethod
     def _row_line(r: tuple) -> str:
         pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op = r
@@ -282,7 +284,7 @@ class ISS:
                 f"{z} {cf} {n} {v} {sp:02X} {pcn:02X} {ov} {od:02X} {op:02X}")
 
     def dump(self) -> list[str]:
-        # Mismo orden que tb/cpu_dump_tb.v: filas, luego END, luego la RAM.
+        # Same order as tb/cpu_dump_tb.v: rows, then END, then RAM.
         lineas = [self._row_line(r) for r in self.rows]
         lineas.append(f"END {len(self.rows)}")
         lineas.append("M " + " ".join(f"{b:02X}" for b in self.mem))
@@ -314,7 +316,7 @@ def main(argv: list[str]) -> int:
         for line in iss.dump():
             print(line)
     else:
-        print(f"{len(iss.rows)} instrucciones; OUT = "
+        print(f"{len(iss.rows)} instructions; OUT = "
               + " ".join(f"{v:02X}/{p}" for v, p in iss.outs))
     return 0
 

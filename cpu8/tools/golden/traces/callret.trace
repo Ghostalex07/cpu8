@@ -1,4 +1,4 @@
-=== traza de programs/callret.hex ===
+=== trace of programs/callret.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   03   00   00   00   0 0 0 0  f0      
   02   14   03   04   00   00   0 0 0 0  f0      
@@ -12,4 +12,4 @@
   0e   f1   0e   04   00   00   0 0 0 0  f0      
   0b   e0   0e   04   00   00   0 0 0 0  f0   OUT
   0c   f0   0e   04   00   00   0 0 0 0  f0      
-(HLT tras 12 instrucciones)
+(HLT after 12 instructions)

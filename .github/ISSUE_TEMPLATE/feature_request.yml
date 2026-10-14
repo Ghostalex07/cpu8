@@ -1,48 +1,48 @@
-name: Propuesta de mejora
-description: Propón una nueva instrucción, herramienta o mejora del proyecto.
-title: "[Mejora] "
+name: Feature request
+description: Propose a new instruction, tool or project improvement.
+title: "[Feature] "
 labels: ["enhancement"]
 body:
   - type: textarea
-    id: problema
+    id: problem
     attributes:
-      label: ¿Qué problema resuelve?
-      description: Describe la necesidad o la limitación actual.
+      label: What problem does it solve?
+      description: Describe the need or the current limitation.
     validations:
       required: true
   - type: textarea
-    id: propuesta
+    id: proposal
     attributes:
-      label: Propuesta
-      description: ¿Qué te gustaría que hiciera el proyecto?
+      label: Proposal
+      description: What would you like the project to do?
     validations:
       required: true
   - type: dropdown
     id: area
     attributes:
-      label: Área
+      label: Area
       multiple: true
       options:
-        - ISA (nuevas instrucciones / modos)
+        - ISA (new instructions / modes)
         - RTL (rtl/)
-        - Ensamblador (asm/)
-        - Herramientas de verificación (tools/)
-        - Documentación
-        - FPGA / síntesis
-        - Otro
+        - Assembler (asm/)
+        - Verification tools (tools/)
+        - Documentation
+        - FPGA / synthesis
+        - Other
     validations:
       required: true
   - type: textarea
-    id: alternativas
+    id: alternatives
     attributes:
-      label: Alternativas consideradas
-      description: Otras opciones que hayas valorado (opcional).
+      label: Alternatives considered
+      description: Other options you may have weighed up (optional).
     validations:
       required: false
   - type: checkboxes
-    id: compatibilidad
+    id: compatibility
     attributes:
-      label: Compatibilidad
+      label: Compatibility
       options:
-        - label: La propuesta mantiene la retrocompatibilidad (los `.hex` existentes no cambian de bytes).
+        - label: The proposal stays backward-compatible (existing `.hex` files do not change byte-for-byte).
           required: false

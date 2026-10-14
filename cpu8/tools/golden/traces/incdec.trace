@@ -1,4 +1,4 @@
-=== traza de programs/incdec.hex ===
+=== trace of programs/incdec.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   00   00   00   00   0 0 0 0  f0      
   02   14   00   05   00   00   0 0 0 0  f0      
@@ -32,4 +32,4 @@
   13   05   00   00   00   00   1 0 0 0  f0      
   14   d2   00   00   00   00   1 0 0 0  f0      
   16   f0   00   00   00   00   1 0 0 0  f0      
-(HLT tras 32 instrucciones)
+(HLT after 32 instructions)

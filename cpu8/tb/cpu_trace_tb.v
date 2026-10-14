@@ -1,23 +1,23 @@
 `timescale 1ns/1ps
 `default_nettype none
 // ============================================================================
-//  cpu_trace_tb.v - Debugger de traza (Fase 9)
+//  cpu_trace_tb.v - Trace debugger (Phase 9)
 //
-//  Ejecuta un programa y muestra UNA linea por instruccion retirada, con el
-//  estado de la CPU *despues* de ejecutarla:
+//  Runs a program and shows ONE line per retired instruction, with the
+//  CPU state *after* executing it:
 //
 //      PC   IR   A  B  C  D   Z C N V  SP
 //
-//  Uso (via `make trace PROG=programs/xxx`):
+//  Usage (via `make trace PROG=programs/xxx`):
 //      vvp build/trace.vvp +hex=programs/xxx.hex
 //
-//  No forma parte de `make test`: es una herramienta interactiva de depuracion.
+//  It is not part of `make test`: it is an interactive debugging tool.
 // ============================================================================
 
 module cpu_trace_tb;
 
     reg clk = 0, rst = 1, irq = 0;
-    reg [7:0] in_data = 8'h00;      // entrada fija (puerto 0..3 -> igual valor)
+    reg [7:0] in_data = 8'h00;      // fixed input (port 0..3 -> same value)
     wire       halted, out_valid;
     wire [7:0] out_data;
     wire [1:0] in_port, out_port;
@@ -32,26 +32,26 @@ module cpu_trace_tb;
 
     reg [8*256-1:0] hexfile;
     integer n = 0;
-    localparam integer MAX_INSTR = 20000;   // tope de seguridad
+    localparam integer MAX_INSTR = 20000;   // safety cap
 
     initial begin
         if (!$value$plusargs("hex=%s", hexfile)) hexfile = "programs/countdown.hex";
         if (!$value$plusargs("in=%d", in_data)) in_data = 8'h00;
         $readmemh(hexfile, dut.u_ram.mem);
-        $display("=== traza de %0s ===", hexfile);
+        $display("=== trace of %0s ===", hexfile);
         $display("    PC   IR   A    B    C    D    Z C N V  SP");
         rst = 1;
         repeat (2) @(posedge clk);
         @(negedge clk) rst = 0;
     end
 
-    // PC de la instruccion en curso: se latchea al cargar el IR (S_FETCH).
+    // PC of the current instruction: latched when the IR is loaded (S_FETCH).
     reg [7:0] trace_pc;
     always @(posedge clk) if (dut.ir_ld) trace_pc <= dut.pc_q;
 
-    // Una instruccion "retira" en el flanco de subida en que se ejecuta S_EXEC
-    // (estado 3'd2).  Se detecta en el negedge siguiente, cuando los registros
-    // y flags ya estan actualizados.
+    // An instruction "retires" on the rising edge in which S_EXEC is executed
+    // (state 3'd2).  It is detected on the following negedge, when the registers
+    // and flags are already updated.
     reg [2:0] st_d = 3'd0;
     always @(negedge clk) begin
         if (rst) begin
@@ -66,14 +66,14 @@ module cpu_trace_tb;
                          out_valid ? "   OUT" : "");
                 n = n + 1;
                 if (n >= MAX_INSTR) begin
-                    $display("(tope de %0d instrucciones alcanzado)", MAX_INSTR);
+                    $display("(cap of %0d instructions reached)", MAX_INSTR);
                     $finish;
                 end
             end
             st_d <= dut.u_ctrl.state;
             if (halted) begin
-                if (out_valid) $display("    (ULTIMO OUT: %02h por puerto %0d)", out_data, out_port);
-                $display("(HLT tras %0d instrucciones)", n);
+                if (out_valid) $display("    (LAST OUT: %02h on port %0d)", out_data, out_port);
+                $display("(HLT after %0d instructions)", n);
                 $finish;
             end
         end

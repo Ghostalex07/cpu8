@@ -1,4 +1,4 @@
-=== traza de programs/fibonacci.hex ===
+=== trace of programs/fibonacci.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   01   00   00   00   0 0 0 0  f0      
   02   14   01   01   00   00   0 0 0 0  f0      
@@ -74,4 +74,4 @@
   07   51   79   90   e9   00   0 1 0 1  f0      
   08   d2   79   90   e9   00   0 1 0 1  f0      
   0e   f0   79   90   e9   00   0 1 0 1  f0      
-(HLT tras 74 instrucciones)
+(HLT after 74 instructions)

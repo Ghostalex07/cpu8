@@ -1,21 +1,21 @@
 ; ============================================================================
-;  extensions.asm - Demo de las extensiones del ISA (Fase 8)
+;  extensions.asm - Demo of the ISA extensions (Phase 8)
 ;
-;  Ejercita, en un solo programa, las tres familias nuevas y comprueba que su
-;  comportamiento es el esperado.  La salida por el puerto OUT es fija:
+;  Exercises, in a single program, the three new families and checks that their
+;  behaviour is as expected.  The output on the OUT port is fixed:
 ;
-;      0A 0F 08     -> LDI/ADDI/SUBI (+ CMPI como comprobacion)
-;      22 33 11 44  -> LD/ST indexados con base B=0xC0 y desplazamientos +/-;
-;                      el 44 se recupera de [B-1] (offset negativo)
-;      A1 A2 A3     -> saltos con signo (N^V): JLT no tomado, JGE/JLE/JGT si
-;      B1 B2        -> saltos de estado: JVS/JMI (V,N) y JVC/JPL
+;      0A 0F 08     -> LDI/ADDI/SUBI (+ CMPI as a check)
+;      22 33 11 44  -> indexed LD/ST with base B=0xC0 and +/- offsets;
+;                      the 44 is recovered from [B-1] (negative offset)
+;      A1 A2 A3     -> signed branches (N^V): JLT not taken, JGE/JLE/JGT taken
+;      B1 B2        -> status branches: JVS/JMI (V,N) and JVC/JPL
 ;
-;  Cualquier fallo toma una rama "mal" que imprime un marcador 0xE* y termina,
-;  con lo que el valor/numero de salidas deja de coincidir con el .ref.
+;  Any failure takes a "bad" branch that prints an 0xE* marker and stops, so the
+;  value/number of outputs stops matching the .ref.
 ; ============================================================================
 
 ; ---------------------------------------------------------------------------
-;  1) Inmediatos de la ALU: ADDI / SUBI / CMPI (pagina 0x1, subop en rs)
+;  1) ALU immediates: ADDI / SUBI / CMPI (page 0x1, subop in rs)
 ; ---------------------------------------------------------------------------
         LDI  A, 10       ; A = 10
         OUT  A           ; -> 0A
@@ -24,15 +24,15 @@
         SUBI A, 7        ; A = 8
         OUT  A           ; -> 08
         CMPI A, 8        ; A - 8 = 0  -> Z=1
-        JZ   idx         ; si CMPI/JZ fallan, cae al error
+        JZ   idx         ; if CMPI/JZ fail, it falls into the error
         LDI  A, 0xE0
         OUT  A
         HLT
 
 ; ---------------------------------------------------------------------------
-;  2) Direccionamiento indexado: LD/ST rd,[rs+off] con base B = 0xC0.
-;     Se usan off 0/1/2 y off = -1 (0xFF) para probar tambien el signo.
-;     La base 0xC0 y 0xBF estan muy por encima del tamano del programa.
+;  2) Indexed addressing: LD/ST rd,[rs+off] with base B = 0xC0.
+;     Offsets 0/1/2 and off = -1 (0xFF) are used to test the sign too.
+;     The bases 0xC0 and 0xBF are well above the size of the program.
 ; ---------------------------------------------------------------------------
 idx:    LDI  B, 0xC0      ; base = 0xC0
         LDI  A, 0x11
@@ -42,7 +42,7 @@ idx:    LDI  B, 0xC0      ; base = 0xC0
         LDI  A, 0x33
         ST   A, [B+2]     ; RAM[0xC2] = 0x33
         LDI  A, 0x44
-        ST   A, [B-1]     ; RAM[0xBF] = 0x44  (offset negativo)
+        ST   A, [B-1]     ; RAM[0xBF] = 0x44  (negative offset)
         LD   A, [B+1]     ; A = 0x22
         OUT  A            ; -> 22
         LD   C, [B+2]     ; C = 0x33
@@ -53,15 +53,15 @@ idx:    LDI  B, 0xC0      ; base = 0xC0
         OUT  A            ; -> 44
 
 ; ---------------------------------------------------------------------------
-;  3) Saltos con signo (N^V).  A=0x7F(127), B=0xFF(-1): con signo 127 > -1,
-;     asi que JLT NO debe saltar y JGE si (sin signo diria "menor").
+;  3) Signed branches (N^V).  A=0x7F(127), B=0xFF(-1): signed, 127 > -1,
+;     so JLT must NOT branch and JGE must (unsigned would say "lower").
 ; ---------------------------------------------------------------------------
         LDI  A, 0x7F
         LDI  B, 0xFF
         CMP  A, B
-        JLT  mal3         ; no debe saltar
+        JLT  bad3         ; must not branch
         JGE  ok3a
-mal3:   LDI  A, 0xE1
+bad3:   LDI  A, 0xE1
         OUT  A
         HLT
 ok3a:   LDI  A, 0xA1
@@ -90,7 +90,7 @@ ok3c:   LDI  A, 0xA3
         OUT  A            ; -> A3
 
 ; ---------------------------------------------------------------------------
-;  4) Saltos de estado: JVS/JMI (desbordamiento y negativo) y JVC/JPL.
+;  4) Status branches: JVS/JMI (overflow and negative) and JVC/JPL.
 ; ---------------------------------------------------------------------------
         LDI  A, 0x7F
         LDI  B, 0x01

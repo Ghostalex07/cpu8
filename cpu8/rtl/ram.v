@@ -1,31 +1,31 @@
 // ============================================================================
-//  ram.v - Memoria de datos/programa (von Neumann) de 256 x 8 bits
+//  ram.v - Data/program memory (von Neumann) of 256 x 8 bits
 //
-//  Un único puerto:
-//    - ESCRITURA síncrona (en flanco de subida y solo si `we` = 1).
-//    - LECTURA registrada en flanco de BAJADA: el dato aparece a mitad de ciclo
-//      y queda disponible para el datapath (que registra en flanco de subida)
-//      antes del próximo posedge.  Es transparente para el CPU (ve el dato en
-//      el mismo ciclo en que direcciona), pero permite mapear la memoria a las
-//      BRAM de la iCE40 (SB_RAM40_4K), que tienen reloj de lectura propio, en
-//      lugar de usar lógica distribuida (ver fpga, Fase 7.6).
+//  A single port:
+//    - SYNCHRONOUS WRITE (on the rising edge and only if `we` = 1).
+//    - READ registered on the FALLING edge: the data appears mid-cycle
+//      and is available to the datapath (which registers on the rising edge)
+//      before the next posedge.  It is transparent for the CPU (it sees the data
+//      in the same cycle in which it addresses), but it allows the memory to be
+//      mapped to the iCE40 BRAMs (SB_RAM40_4K), which have their own read clock,
+//      instead of using distributed logic (see fpga, Phase 7.6).
 //
-//  La memoria se inicializa con `$readmemh("archivo.hex", ram.mem)`, que carga
-//  un byte por línea (formato que generará nuestro ensamblador). No tiene reset:
-//  el contenido es el que cargue $readmemh (o indefinido si no se carga).
+//  The memory is initialized with `$readmemh("file.hex", ram.mem)`, which loads
+//  one byte per line (the format our assembler will generate). It has no reset:
+//  the content is whatever $readmemh loads (or undefined if not loaded).
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
 
 module ram (
-    input  wire       clk,     // reloj del sistema
-    input  wire       we,      // permiso de escritura (activo alto)
-    input  wire [7:0] addr,    // dirección (0..255)
-    input  wire [7:0] wdata,   // dato a escribir
-    output reg  [7:0] rdata    // dato leído (registrado en flanco de bajada)
+    input  wire       clk,     // system clock
+    input  wire       we,      // write enable (active high)
+    input  wire [7:0] addr,    // address (0..255)
+    input  wire [7:0] wdata,   // data to write
+    output reg  [7:0] rdata    // read data (registered on the falling edge)
 );
 
-    // 256 posiciones de 8 bits.
+    // 256 locations of 8 bits.
 `ifdef FPGA_RAM64
     reg [7:0] mem [0:63];
 `else
@@ -33,19 +33,19 @@ module ram (
 `endif
 
 `ifdef RAM_INIT
-    // Inicializacion SOLO para sintesis en FPGA (Fase 7.6): carga el programa
-    // desde "fpga/program.hex".  En iverilog y Verilator NO se define RAM_INIT,
-    // asi que el testbench cargue la RAM como siempre.
+    // Initialization ONLY for FPGA synthesis (Phase 7.6): loads the program
+    // from "fpga/program.hex".  In iverilog and Verilator RAM_INIT is NOT defined,
+    // so the testbench loads the RAM as usual.
     initial $readmemh("fpga/program.hex", mem);
 `endif
 
-    // Escritura síncrona.
+    // Synchronous write.
     always @(posedge clk) begin
         if (we) mem[addr] <= wdata;
     end
 
-    // Lectura registrada en flanco de bajada (media latencia de ciclo): el
-    // datapath registra en posedge, así que ve mem[addr] en el mismo ciclo.
+    // Read registered on the falling edge (half a cycle of latency): the
+    // datapath registers on the posedge, so it sees mem[addr] in the same cycle.
     always @(negedge clk) begin
         rdata <= mem[addr];
     end

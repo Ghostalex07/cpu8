@@ -1,15 +1,15 @@
 // ============================================================================
-//  irq_tb.v - Testbench de las interrupciones (Fase 7.5)
+//  irq_tb.v - Interrupt testbench (Phase 7.5)
 //
-//  Igual que cpu_tb.v pero ademas:
-//    - instancia la CPU con IRQ_VECTOR = 0x10,
-//  y - mantiene la entrada irq alta tras el reset.
+//  Same as cpu_tb.v but additionally:
+//    - instantiates the CPU with IRQ_VECTOR = 0x10,
+//  and - keeps the irq input high after the reset.
 //
-//  El programa (por defecto programs/irq.hex, o +hex=<ruta>) habilita las
-//  interrupciones con EI; al bajar I tras atender la primera, se atiende una
-//  sola aunque irq siga alto.  Se compara la salida con +exp.
+//  The program (by default programs/irq.hex, or +hex=<path>) enables the
+//  interrupts with EI; since I goes low after servicing the first one, only
+//  one is serviced even if irq stays high.  The output is compared with +exp.
 //
-//  Genera build/irq_tb.vcd para verlo en GTKWave.
+//  Generates build/irq_tb.vcd to see it in GTKWave.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
@@ -17,7 +17,7 @@
 module irq_tb;
 
     reg clk = 0, rst = 1;
-    reg irq = 0;        // nivel de peticion de interrupcion
+    reg irq = 0;        // interrupt request level
 
     wire       halted, out_valid;
     wire [7:0] out_data;
@@ -52,8 +52,8 @@ module irq_tb;
             in_t = 0;
             fdd = $fopen(fname, "r");
             if (fdd == 0) begin
-                $display("ERROR: no se pudo abrir %0s", fname);
-                $fatal(1, "fichero no encontrado");
+                $display("ERROR: could not open %0s", fname);
+                $fatal(1, "file not found");
             end
             c = $fgetc(fdd);
             while (c != -1) begin
@@ -74,10 +74,10 @@ module irq_tb;
 
         contar_tokens(hexfile, nlen);
         if (nlen == 0) begin
-            $display("ERROR: el programa %0s esta vacio", hexfile);
-            $fatal(1, "programa vacio");
+            $display("ERROR: the program %0s is empty", hexfile);
+            $fatal(1, "empty program");
         end
-        // RAM a 0 antes de cargar (posiciones no cubiertas por el .hex).
+        // RAM at 0 before loading (positions not covered by the .hex).
         for (i = 0; i < 256; i = i + 1) dut.u_ram.mem[i] = 8'h00;
         $readmemh(hexfile, dut.u_ram.mem, 0, nlen - 1);
 
@@ -86,15 +86,15 @@ module irq_tb;
         if (use_exp) begin
             contar_tokens(expfile, nexp);
             if (nexp == 0) begin
-                $display("ERROR: la lista esperada %0s esta vacia", expfile);
-                $fatal(1, "lista esperada vacia");
+                $display("ERROR: the expected list %0s is empty", expfile);
+                $fatal(1, "empty expected list");
             end
             $readmemh(expfile, expmem, 0, nexp - 1);
         end
 
-        $display("=== Simulacion de IRQ (programa %0s, %0d bytes) ===", hexfile, nlen);
+        $display("=== IRQ simulation (program %0s, %0d bytes) ===", hexfile, nlen);
 
-        // Reset sincrono 2 ciclos y, despues, irq en alto durante todo el test.
+        // Synchronous reset 2 cycles and, afterwards, irq high throughout the test.
         rst = 1;
         repeat (2) @(posedge clk);
         @(negedge clk) begin rst = 0; irq = 1; end
@@ -106,14 +106,14 @@ module irq_tb;
             if (out_valid) begin
                 if (nout < nexp) begin
                     if (out_data !== expmem[nout]) begin
-                        $display("  OUT[%0d] = %0d   ESPERADO %0d   <-- MAL",
+                        $display("  OUT[%0d] = %0d   EXPECTED %0d   <-- WRONG",
                                  nout, out_data, expmem[nout]);
                         errors = errors + 1;
                     end else begin
                         $display("  OUT[%0d] = %0d   ok", nout, out_data);
                     end
                 end else begin
-                    $display("  OUT[%0d] = %0d   <-- salida de mas", nout, out_data);
+                    $display("  OUT[%0d] = %0d   <-- extra output", nout, out_data);
                     errors = errors + 1;
                 end
                 nout = nout + 1;
@@ -122,17 +122,17 @@ module irq_tb;
         end
 
         if (!halted) begin
-            $display("  FALLO: la CPU no llego a HLT (posible bucle infinito)");
+            $display("  FAIL: the CPU did not reach HLT (possible infinite loop)");
             errors = errors + 1;
         end
 
-        $display("  Salidas emitidas: %0d (esperadas: %0d)", nout, nexp);
+        $display("  Outputs emitted: %0d (expected: %0d)", nout, nexp);
         if (nout !== nexp) errors = errors + 1;
 
-        if (errors == 0) $display("IRQ: TODOS LOS TESTS PASARON");
-        else             $display("IRQ: %0d FALLOS", errors);
+        if (errors == 0) $display("IRQ: ALL TESTS PASSED");
+        else             $display("IRQ: %0d FAILURES", errors);
 
-        if (errors != 0) $fatal(1, "IRQ: hay fallos, revisa arriba");
+        if (errors != 0) $fatal(1, "IRQ: there are failures, check above");
         $finish;
     end
 

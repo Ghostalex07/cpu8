@@ -1,57 +1,58 @@
 // ============================================================================
-//  cpu.v - CPU cpu8 completa (datapath + unidad de control)
+//  cpu.v - complete cpu8 CPU (datapath + control unit)
 //
-//  Une las piezas (ALU, banco de registros, RAM, PC) con los registros internos
-//  (IR, operand, flags, SP, salida).  No decodifica: eso lo hace control.v.
+//  Ties the pieces together (ALU, register file, RAM, PC) with the internal
+//  registers (IR, operand, flags, SP, output).  It does not decode: control.v
+//  does that.
 //
-//  Pila: registro SP de 8 bits (arranca en 0xF0).  Es una pila DESCENDENTE que
-//  apunta al hueco libre:
+//  Stack: 8-bit SP register (starts at 0xF0).  It is a DESCENDING stack that
+//  points to the free slot:
 //       PUSH v  ->  mem[SP] = v ; SP = SP - 1
 //       POP  rd ->  SP = SP + 1 ; rd = mem[SP]
 //       RET     ->  SP = SP + 1 ; PC = mem[SP]
-//  Por eso en PUSH se direcciona la RAM con SP, y en POP/RET con SP+1.
+//  That is why in PUSH the RAM is addressed with SP, and in POP/RET with SP+1.
 //
-//  CALL (0xC1): ademas de saltar, escribe el PC de retorno (dir_CALL+2) en la
-//  pila.  Direccionamiento indirecto (0xF4/0xF5): los indices de registro van
-//  en el 2o byte (`operand`), asi que se conmutan las direcciones del banco de
-//  registros y la RAM se direcciona con el VALOR del registro rs.
+//  CALL (0xC1): besides jumping, it writes the return PC (addr_CALL+2) onto the
+//  stack.  Indirect addressing (0xF4/0xF5): the register indices go in the 2nd
+//  byte (`operand`), so the register file addresses are switched and the RAM is
+//  addressed with the VALUE of register rs.
 //
-//  Interrupciones: flag I (lo activa EI=0xF2, lo desactiva DI=0xF3).  Si I=1 e
-//  irq=1 al comienzo de una instruccion, la CPU apila el PC de retorno, baja I
-//  y salta a IRQ_VECTOR.  Al entrar en la interrupcion I queda a 0, de modo que
-//  mientras irq siga alto no se atiende otra hasta volver a hacer EI.
+//  Interrupts: flag I (enabled by EI=0xF2, disabled by DI=0xF3).  If I=1 and
+//  irq=1 at the beginning of an instruction, the CPU pushes the return PC,
+//  clears I and jumps to IRQ_VECTOR.  On entering the interrupt I is cleared, so
+//  as long as irq stays high no other one is serviced until EI is executed again.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
 
 module cpu #(
-    parameter [7:0] IRQ_VECTOR = 8'h08   // direccion del manejador de IRQ
+    parameter [7:0] IRQ_VECTOR = 8'h08   // address of the IRQ handler
 ) (
     input  wire       clk,
-    input  wire       rst,        // reset sincrono, activo alto
-    input  wire       irq,        // peticion de interrupcion (nivel, activo alto)
-    output wire       halted,     // 1 cuando la CPU esta parada (tras HLT)
-    input  wire [7:0] in_data,    // bus de entrada (valor del puerto `in_port`)
-    output reg  [7:0] out_data,   // ultimo valor enviado por OUT
-    output reg        out_valid,  // pulso de 1 ciclo al ejecutar OUT
-    output reg  [1:0] out_port,   // puerto del ultimo OUT
-    output wire [1:0] in_port     // puerto que lee la instruccion IN en curso
+    input  wire       rst,        // synchronous reset, active high
+    input  wire       irq,        // interrupt request (level, active high)
+    output wire       halted,     // 1 when the CPU is stopped (after HLT)
+    input  wire [7:0] in_data,    // input bus (value of port `in_port`)
+    output reg  [7:0] out_data,   // last value sent by OUT
+    output reg        out_valid,  // 1-cycle pulse when OUT is executed
+    output reg  [1:0] out_port,   // port of the last OUT
+    output wire [1:0] in_port     // port read by the current IN instruction
 );
 
     // ------------------------------------------------------------------
-    //  Registros internos
+    //  Internal registers
     // ------------------------------------------------------------------
-    reg [7:0] IR;        // instruccion en curso
-    reg [7:0] operand;   // segundo byte (inmediato o direccion)
-    reg       flag_z;    // Z (cero)
-    reg       flag_c;    // C (acarreo / no-borrow)
-    reg       flag_n;    // N (negativo)
-    reg       flag_v;    // V (desbordamiento con signo)
-    reg       flag_i;    // I (interrupciones habilitadas)
-    reg [7:0] SP;        // puntero de pila (arranca en 0xF0)
+    reg [7:0] IR;        // current instruction
+    reg [7:0] operand;   // second byte (immediate or address)
+    reg       flag_z;    // Z (zero)
+    reg       flag_c;    // C (carry / no-borrow)
+    reg       flag_n;    // N (negative)
+    reg       flag_v;    // V (signed overflow)
+    reg       flag_i;    // I (interrupts enabled)
+    reg [7:0] SP;        // stack pointer (starts at 0xF0)
 
     // ------------------------------------------------------------------
-    //  Senales control -> datapath
+    //  control -> datapath signals
     // ------------------------------------------------------------------
     wire       ir_ld, opr_ld, pc_as_addr, pc_inc, pc_load;
     wire       rf_we, ram_we, flags_we, out_wr;
@@ -64,22 +65,22 @@ module cpu #(
     wire       pc_from_vec, flag_i_set, flag_i_clear;
     wire       sel_in, io_op;
 
-    // Instruccion en curso: siempre desde el registro IR.  Decodificar desde
-    // IR (y no desde la RAM) evita un lazo combinacional control <-> RAM.
+    // Current instruction: always from the IR register.  Decoding from
+    // IR (and not from RAM) avoids a combinational loop control <-> RAM.
     wire [7:0] instr = IR;
 
     // ------------------------------------------------------------------
-    //  Buses internos
+    //  Internal buses
     // ------------------------------------------------------------------
-    wire [7:0] rf_rdata_rd;   // lectura del registro rd (puerto 1)
-    wire [7:0] rf_rdata_rs;   // lectura del registro rs (puerto 2)
+    wire [7:0] rf_rdata_rd;   // read of register rd (port 1)
+    wire [7:0] rf_rdata_rs;   // read of register rs (port 2)
     wire [7:0] alu_a, alu_b, alu_y;
     wire       alu_c, alu_z, alu_n, alu_v;
     wire [7:0] ram_addr, ram_wdata, ram_rdata;
     wire [7:0] pc_q;
 
     // ------------------------------------------------------------------
-    //  Unidad de control
+    //  Control unit
     // ------------------------------------------------------------------
     control u_ctrl (
         .clk(clk), .rst(rst), .instr(instr), .fetched(ram_rdata),
@@ -102,7 +103,7 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  ALU.  a = rd (o rs en INC/DEC); b = inmediato, rs o la constante 1.
+    //  ALU.  a = rd (or rs in INC/DEC); b = immediate, rs or the constant 1.
     // ------------------------------------------------------------------
     assign alu_a = sel_a_rs ? rf_rdata_rs : rf_rdata_rd;
     assign alu_b = sel_one  ? 8'd1 :
@@ -114,24 +115,24 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  Banco de registros.  rd en el puerto 1, rs en el puerto 2.
-    //  El dato a escribir viene de la RAM (LD/POP) o de la ALU.
+    //  Register file.  rd on port 1, rs on port 2.
+    //  The data to write comes from RAM (LD/POP) or from the ALU.
     // ------------------------------------------------------------------
     wire [7:0] rf_wdata = sel_in  ? in_data :
                           sel_mem ? ram_rdata : alu_y;
 
     // ------------------------------------------------------------------
-    //  Puertos de E/S.  La forma portada (0xF8 OUT / 0xF9 IN) toma el
-    //  puerto de `operand[1:0]`; las de 1 byte (OUT/IN) usan el puerto 0.
+    //  I/O ports.  The ported form (0xF8 OUT / 0xF9 IN) takes the
+    //  port from `operand[1:0]`; the 1-byte ones (OUT/IN) use port 0.
     // ------------------------------------------------------------------
     wire [1:0] io_port = io_op ? operand[1:0] : 2'b00;
     assign in_port = io_port;
 
     // ------------------------------------------------------------------
-    //  RAM.  Direccion = PC (FETCH/OPR), SP (pila), rs indirecto, u
-    //  `operand` (EXEC).  Dato escrito = rd (ST), rs (PUSH) o PC (CALL).
+    //  RAM.  Address = PC (FETCH/OPR), SP (stack), rs indirect, or
+    //  `operand` (EXEC).  Data written = rd (ST), rs (PUSH) or PC (CALL).
     // ------------------------------------------------------------------
-    wire [7:0] sp_addr = sp_inc ? (SP + 8'd1) : SP;  // POP/RET leen SP+1
+    wire [7:0] sp_addr = sp_inc ? (SP + 8'd1) : SP;  // POP/RET read SP+1
 
     assign ram_addr  = ind ? rf_rdata_rs
                      : idx ? (rf_rdata_rs + operand)
@@ -144,7 +145,7 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  Banco de registros.  En modo indirecto los indices salen del 2o byte.
+    //  Register file.  In indirect mode the indices come from the 2nd byte.
     // ------------------------------------------------------------------
     wire [1:0] rf_raddr1 = ind ? operand[3:2] : instr[3:2];
     wire [1:0] rf_raddr2 = ind ? operand[1:0] : instr[1:0];
@@ -157,7 +158,7 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  PC.  Salta a `operand` (JMP/Jcc) o al valor de la pila (RET).
+    //  PC.  Jumps to `operand` (JMP/Jcc) or to the value from the stack (RET).
     // ------------------------------------------------------------------
     wire [7:0] pc_din = pc_from_vec ? IRQ_VECTOR :
                         pc_from_mem ? ram_rdata : operand;
@@ -167,7 +168,7 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  Registros sincronos
+    //  Synchronous registers
     // ------------------------------------------------------------------
     always @(posedge clk) begin
         if (rst) begin
@@ -179,9 +180,9 @@ module cpu #(
             flag_v   <= 1'b0;
             flag_i   <= 1'b0;
 `ifdef FPGA_RAM64
-            SP       <= 8'h3F;   // pila en RAM reducida (64 bytes)
+            SP       <= 8'h3F;   // stack in reduced RAM (64 bytes)
 `else
-            SP       <= 8'hF0;   // pila en RAM completa (256 bytes)
+            SP       <= 8'hF0;   // stack in full RAM (256 bytes)
 `endif
             out_data <= 8'h00;
             out_valid<= 1'b0;
@@ -203,7 +204,7 @@ module cpu #(
                 out_data <= rf_rdata_rd;
                 out_port <= io_port;
             end
-            out_valid <= out_wr;   // pulso de un ciclo tras OUT
+            out_valid <= out_wr;   // one-cycle pulse after OUT
         end
     end
 

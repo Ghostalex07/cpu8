@@ -1,4 +1,4 @@
-=== traza de programs/fase4.hex ===
+=== trace of programs/fase4.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   07   00   00   00   0 0 0 0  f0      
   02   40   07   00   00   00   0 0 0 0  f0      
@@ -26,4 +26,4 @@
   09   61   00   01   00   00   1 1 0 0  f0      
   0a   d1   00   01   00   00   1 1 0 0  f0      
   0c   f0   00   01   00   00   1 1 0 0  f0      
-(HLT tras 26 instrucciones)
+(HLT after 26 instructions)

@@ -1,19 +1,19 @@
 ; ============================================================================
-;  factorial.asm - Factorial iterativo (5! = 120) usando la MUL de hardware
+;  factorial.asm - Iterative factorial (5! = 120) using the hardware MUL
 ;
-;  A = acumulador (empieza en 1), B = n.  En cada vuelta A = A*B y B-- ; el
-;  bucle termina cuando B llega a 0 (DEC pone Z).
+;  A = accumulator (starts at 1), B = n.  On each pass A = A*B and B-- ; the
+;  loop ends when B reaches 0 (DEC sets Z).
 ;
-;  Salida esperada (OUT): 78   (5! = 120 = 0x78)
+;  Expected output (OUT): 78   (5! = 120 = 0x78)
 ; ============================================================================
 
-        LDI A, 1                ; acumulador = 1
+        LDI A, 1                ; accumulator = 1
         LDI B, 5                ; n = 5
 
-bucle:
+loop:
         MUL A, B                ; A = A * B
         DEC B
-        JNZ bucle               ; mientras B != 0
+        JNZ loop                ; while B != 0
 
         OUT A                   ; 120 = 0x78
         HLT

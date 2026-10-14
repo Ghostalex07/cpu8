@@ -1,4 +1,4 @@
-=== traza de programs/euclid.hex ===
+=== trace of programs/euclid.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   90   00   00   00   0 0 0 0  f0      
   02   14   90   3c   00   00   0 0 0 0  f0      
@@ -37,4 +37,4 @@
   07   d0   0c   00   00   00   1 1 0 0  f0      
   14   e0   0c   00   00   00   1 1 0 0  f0   OUT
   15   f0   0c   00   00   00   1 1 0 0  f0      
-(HLT tras 37 instrucciones)
+(HLT after 37 instructions)

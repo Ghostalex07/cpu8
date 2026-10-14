@@ -1,7 +1,7 @@
-# Normaliza los finales de línea a LF en todo el repositorio.
+# Normalizes line endings to LF across the repository.
 * text=auto eol=lf
 
-# Código y datos del proyecto (siempre texto con LF).
+# Project code and data (always text with LF).
 *.v          text eol=lf
 *.sv         text eol=lf
 *.py         text eol=lf
@@ -13,6 +13,6 @@
 *.yaml       text eol=lf
 Makefile     text eol=lf
 
-# Las trazas doradas y los listados se diffean mejor como texto.
+# Golden traces and listings diff better as text.
 *.trace      text eol=lf diff
 *.hex        text eol=lf diff

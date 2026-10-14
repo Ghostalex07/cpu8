@@ -1,4 +1,4 @@
-=== traza de programs/inout.hex ===
+=== trace of programs/inout.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   e1   00   00   00   00   0 0 0 0  f0      
   01   e0   00   00   00   00   0 0 0 0  f0   OUT
@@ -9,4 +9,4 @@
   0a   1c   00   00   ab   55   0 0 0 0  f0      
   0c   ec   00   00   ab   55   0 0 0 0  f0   OUT
   0d   f0   00   00   ab   55   0 0 0 0  f0      
-(HLT tras 9 instrucciones)
+(HLT after 9 instructions)

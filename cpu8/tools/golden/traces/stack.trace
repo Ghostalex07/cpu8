@@ -1,4 +1,4 @@
-=== traza de programs/stack.hex ===
+=== trace of programs/stack.hex ===
     PC   IR   A    B    C    D    Z C N V  SP
   00   10   01   00   00   00   0 0 0 0  f0      
   02   14   01   02   00   00   0 0 0 0  f0      
@@ -13,4 +13,4 @@
   0d   f1   11   02   02   01   0 0 0 0  f0      
   11   ec   11   02   02   01   0 0 0 0  f0   OUT
   12   f0   11   02   02   01   0 0 0 0  f0      
-(HLT tras 13 instrucciones)
+(HLT after 13 instructions)

@@ -1,39 +1,39 @@
-## Descripción
+## Description
 
-<!-- ¿Qué cambia este PR y por qué? -->
+<!-- What does this PR change and why? -->
 
-## Tipo de cambio
+## Type of change
 
-- [ ] Corrección de un fallo
-- [ ] Nueva funcionalidad (ISA, herramienta, etc.)
-- [ ] Refactor / limpieza
-- [ ] Documentación
-- [ ] CI / infraestructura
+- [ ] Bug fix
+- [ ] New feature (ISA, tool, etc.)
+- [ ] Refactor / cleanup
+- [ ] Documentation
+- [ ] CI / infrastructure
 
-## Áreas afectadas
+## Affected areas
 
 - [ ] RTL (`cpu8/rtl/`)
 - [ ] Testbenches (`cpu8/tb/`)
-- [ ] Ensamblador / tabla ISA (`cpu8/asm/`)
-- [ ] Desensamblador / ISS / difftest / regress (`cpu8/tools/`)
-- [ ] Documentación (`docs/`, `README.md`, …)
+- [ ] Assembler / ISA table (`cpu8/asm/`)
+- [ ] Disassembler / ISS / difftest / regress (`cpu8/tools/`)
+- [ ] Documentation (`docs/`, `README.md`, …)
 - [ ] CI (`.github/workflows/`)
 
-## Cómo se ha probado
+## How it was tested
 
-<!-- Describe las pruebas realizadas y pega la salida relevante. -->
+<!-- Describe the tests performed and paste the relevant output. -->
 
-## Lista de comprobación
+## Checklist
 
-- [ ] `make test` pasa
-- [ ] `make vlint` queda sin *warnings*
-- [ ] `make pytools` pasa
-- [ ] `make regress` pasa (y, si tocaba el ensamblado, he ejecutado antes `make regress-update`)
-- [ ] `make difftest` pasa (si he tocado el RTL o el modelo de referencia)
-- [ ] `make check` pasa en local
-- [ ] He actualizado la documentación afectada (`docs/ISA.md`, `docs/OPCODES.md` con `make docs`, `README.md`, …)
-- [ ] Los cambios en el ISA son retrocompatibles (los `.hex` existentes no cambian de bytes), o lo justifico arriba
+- [ ] `make test` passes
+- [ ] `make vlint` is *warning*-free
+- [ ] `make pytools` passes
+- [ ] `make regress` passes (and, if assembly was touched, I ran `make regress-update` first)
+- [ ] `make difftest` passes (if I touched the RTL or the reference model)
+- [ ] `make check` passes locally
+- [ ] I have updated the affected documentation (`docs/ISA.md`, `docs/OPCODES.md` with `make docs`, `README.md`, …)
+- [ ] The ISA changes are backward-compatible (existing `.hex` files do not change byte-for-byte), or I justify otherwise above
 
-## Notas para el revisor
+## Notes for the reviewer
 
-<!-- Cualquier detalle que ayude a revisar el cambio. -->
+<!-- Any detail that helps review the change. -->
