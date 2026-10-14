@@ -1,0 +1,16 @@
+WARNING: /home/vaca/proyectos/cpu/cpu8/tb/cpu_trace_tb.v:40: $readmemh(programs/callret.hex): Not enough words in the file for the requested range [0:255].
+=== traza de programs/callret.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   03   00   00   00   0 0 0 0  f0      
+  02   14   03   04   00   00   0 0 0 0  f0      
+  04   c1   03   04   00   00   0 0 0 0  ef      
+  0d   51   07   04   00   00   0 0 0 0  ef      
+  0e   f1   07   04   00   00   0 0 0 0  f0      
+  06   e0   07   04   00   00   0 0 0 0  f0   OUT
+  07   10   0a   04   00   00   0 0 0 0  f0      
+  09   c1   0a   04   00   00   0 0 0 0  ef      
+  0d   51   0e   04   00   00   0 0 0 0  ef      
+  0e   f1   0e   04   00   00   0 0 0 0  f0      
+  0b   e0   0e   04   00   00   0 0 0 0  f0   OUT
+  0c   f0   0e   04   00   00   0 0 0 0  f0      
+(HLT tras 12 instrucciones)

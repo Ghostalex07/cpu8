@@ -1,0 +1,30 @@
+WARNING: /home/vaca/proyectos/cpu/cpu8/tb/cpu_trace_tb.v:40: $readmemh(programs/fase4.hex): Not enough words in the file for the requested range [0:255].
+=== traza de programs/fase4.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   07   00   00   00   0 0 0 0  f0      
+  02   40   07   00   00   00   0 0 0 0  f0      
+  04   30   07   00   00   00   0 0 0 0  f0      
+  06   14   07   01   00   00   0 0 0 0  f0      
+  08   e0   07   01   00   00   0 0 0 0  f0   OUT
+  09   61   06   01   00   00   0 1 0 0  f0      
+  0a   d1   06   01   00   00   0 1 0 0  f0      
+  08   e0   06   01   00   00   0 1 0 0  f0   OUT
+  09   61   05   01   00   00   0 1 0 0  f0      
+  0a   d1   05   01   00   00   0 1 0 0  f0      
+  08   e0   05   01   00   00   0 1 0 0  f0   OUT
+  09   61   04   01   00   00   0 1 0 0  f0      
+  0a   d1   04   01   00   00   0 1 0 0  f0      
+  08   e0   04   01   00   00   0 1 0 0  f0   OUT
+  09   61   03   01   00   00   0 1 0 0  f0      
+  0a   d1   03   01   00   00   0 1 0 0  f0      
+  08   e0   03   01   00   00   0 1 0 0  f0   OUT
+  09   61   02   01   00   00   0 1 0 0  f0      
+  0a   d1   02   01   00   00   0 1 0 0  f0      
+  08   e0   02   01   00   00   0 1 0 0  f0   OUT
+  09   61   01   01   00   00   0 1 0 0  f0      
+  0a   d1   01   01   00   00   0 1 0 0  f0      
+  08   e0   01   01   00   00   0 1 0 0  f0   OUT
+  09   61   00   01   00   00   1 1 0 0  f0      
+  0a   d1   00   01   00   00   1 1 0 0  f0      
+  0c   f0   00   01   00   00   1 1 0 0  f0      
+(HLT tras 26 instrucciones)

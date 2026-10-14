@@ -1,0 +1,19 @@
+# --- Artefactos de build (los genera el Makefile) ---
+cpu8/build/
+build/
+*.vvp
+*.vcd
+*.fst
+
+# --- FPGA: program.hex lo copia `make fpga`; el resto son salidas ---
+cpu8/fpga/program.hex
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# --- Editor / estado del agente ---
+.opencode/
+*.swp
+*~

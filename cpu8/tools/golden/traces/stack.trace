@@ -1,0 +1,17 @@
+WARNING: /home/vaca/proyectos/cpu/cpu8/tb/cpu_trace_tb.v:40: $readmemh(programs/stack.hex): Not enough words in the file for the requested range [0:255].
+=== traza de programs/stack.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   01   00   00   00   0 0 0 0  f0      
+  02   14   01   02   00   00   0 0 0 0  f0      
+  04   08   01   02   00   00   0 0 0 0  ef      
+  05   09   01   02   00   00   0 0 0 0  ee      
+  06   0e   01   02   02   00   0 0 0 0  ef      
+  07   0f   01   02   02   01   0 0 0 0  f0      
+  08   e8   01   02   02   01   0 0 0 0  f0   OUT
+  09   ec   01   02   02   01   0 0 0 0  f0   OUT
+  0a   10   11   02   02   01   0 0 0 0  f0      
+  0c   08   11   02   02   01   0 0 0 0  ef      
+  0d   f1   11   02   02   01   0 0 0 0  f0      
+  11   ec   11   02   02   01   0 0 0 0  f0   OUT
+  12   f0   11   02   02   01   0 0 0 0  f0      
+(HLT tras 13 instrucciones)

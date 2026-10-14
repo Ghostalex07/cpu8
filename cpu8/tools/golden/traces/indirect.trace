@@ -1,0 +1,16 @@
+WARNING: /home/vaca/proyectos/cpu/cpu8/tb/cpu_trace_tb.v:40: $readmemh(programs/indirect.hex): Not enough words in the file for the requested range [0:255].
+=== traza de programs/indirect.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   2a   00   00   00   0 0 0 0  f0      
+  02   14   2a   20   00   00   0 0 0 0  f0      
+  04   f5   2a   20   00   00   0 0 0 0  f0      
+  06   01   2a   21   00   00   0 0 0 0  f0      
+  07   10   07   21   00   00   0 0 0 0  f0      
+  09   f5   07   21   00   00   0 0 0 0  f0      
+  0b   f4   07   21   00   00   0 0 0 0  f0      
+  0d   e0   07   21   00   00   0 0 0 0  f0   OUT
+  0e   14   07   20   00   00   0 0 0 0  f0      
+  10   f4   2a   20   00   00   0 0 0 0  f0      
+  12   e0   2a   20   00   00   0 0 0 0  f0   OUT
+  13   f0   2a   20   00   00   0 0 0 0  f0      
+(HLT tras 12 instrucciones)

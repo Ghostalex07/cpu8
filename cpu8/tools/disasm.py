@@ -1,0 +1,182 @@
+#!/usr/bin/env python3
+"""Desensamblador de la CPU cpu8.
+
+Convierte un fichero ``.hex`` (un byte por linea, como el que genera
+``asm/assembler.py``) en un listado en ensamblador legible.
+
+Uso::
+
+    python3 tools/disasm.py programs/countdown.hex
+    python3 tools/disasm.py programs/countdown.hex -o countdown.list
+    python3 tools/disasm.py programs/countdown.asm   # acepta .asm (lo ensambla)
+
+La salida del desensamblador es **sintaxis valida del ensamblador**, de modo que
+se puede volver a ensamblar (propiedad que comprueba ``tools/test_disasm.py``).
+Las direcciones destino de saltos y llamadas se muestran como etiquetas
+``L_xxxx``.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+REGS = ("A", "B", "C", "D")
+
+# Mnemonicos por opcode (pagina de 4 bits).
+_ALU = {0x5: "ADD", 0x6: "SUB", 0x7: "AND", 0x8: "OR", 0x9: "XOR", 0xA: "CMP"}
+_INMEDIATO = {0b00: "LDI", 0b01: "ADDI", 0b10: "SUBI", 0b11: "CMPI"}
+_GRP0 = {0b00: "INC", 0b01: "DEC", 0b10: "PUSH", 0b11: "POP"}
+_JCC = (
+    ("JZ", "JNZ", "JC", "JNC"),      # familia 00: sin signo
+    ("JLT", "JGE", "JLE", "JGT"),    # familia 01: con signo (N/V)
+    ("JVS", "JVC", "JMI", "JPL"),    # familia 10: estado
+    ("JVS", "JVC", "JMI", "JPL"),    # familia 11: reservada (igual que 10)
+)
+_RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
+
+
+def leer_hex(path: Path) -> list[int]:
+    """Lee bytes de un ``.hex`` (un byte por linea o separados por espacios)."""
+    datos: list[int] = []
+    for tok in _RE_HEX.findall(path.read_text()):
+        datos.append(int(tok, 16))
+    return datos
+
+
+def leer_fuente(path: Path) -> list[int]:
+    """Acepta un ``.asm`` (lo ensambla) o un ``.hex`` (lo lee)."""
+    if path.suffix == ".asm":
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "asm"))
+        import assembler  # noqa: E402
+        return assembler.ensamblar(path.read_text())[0]
+    return leer_hex(path)
+
+
+def _offset(n: int) -> str:
+    """Desplazamiento indexado con signo para legibilidad (Ca2 si n > 127)."""
+    return f"{n - 256:+d}" if n > 127 else f"{n:+d}"
+
+
+def decodificar(mem: list[int], i: int) -> tuple[str, int]:
+    """Decodifica la instruccion en ``mem[i]``; devuelve ``(texto, longitud)``."""
+    b = mem[i]
+    op, rd, rs = b >> 4, (b >> 2) & 3, b & 3
+    sig = mem[i + 1] if i + 1 < len(mem) else 0
+
+    if op == 0x0:
+        return f"{_GRP0[rd]} {REGS[rs]}", 1
+    if op == 0x1:
+        return f"{_INMEDIATO[rs]} {REGS[rd]}, 0x{sig:02X}", 2
+    if op == 0x2:
+        return f"MOV {REGS[rd]}, {REGS[rs]}", 1
+    if op in (0x3, 0x4):
+        m = "LD" if op == 0x3 else "ST"
+        if rs == 0:
+            return f"{m} {REGS[rd]}, [0x{sig:02X}]", 2
+        return f"{m} {REGS[rd]}, [{REGS[rs]}{_offset(sig)}]", 2
+    if op in _ALU:
+        return f"{_ALU[op]} {REGS[rd]}, {REGS[rs]}", 1
+    if op == 0xB:
+        return f"{'SHL' if rs & 1 == 0 else 'SHR'} {REGS[rd]}", 1
+    if op == 0xC:
+        m = {0b00: "JMP", 0b01: "CALL"}.get(rs)
+        if m is not None:
+            return f"{m} L_{sig:04X}", 2
+        return f"; reservado 0x{b:02X}", 2
+    if op == 0xD:
+        return f"{_JCC[rd][rs]} L_{sig:04X}", 2
+    if op == 0xE:
+        if rs == 0:
+            return f"OUT {REGS[rd]}", 1
+        if rs == 1:
+            return f"IN {REGS[rd]}", 1
+        return f"; reservado 0x{b:02X}", 1
+    if op == 0xF:
+        if b == 0xF0:
+            return "HLT", 1
+        if b == 0xF1:
+            return "RET", 1
+        if b == 0xF2:
+            return "EI", 1
+        if b == 0xF3:
+            return "DI", 1
+        if b in (0xF4, 0xF5):
+            m = "LD" if b == 0xF4 else "ST"
+            return f"{m} {REGS[(sig >> 2) & 3]}, [{REGS[sig & 3]}]", 2
+        if b in (0xF6, 0xF7):
+            m = "MUL" if b == 0xF6 else "DIV"
+            return f"{m} {REGS[(sig >> 2) & 3]}, {REGS[sig & 3]}", 2
+        if b in (0xF8, 0xF9):
+            m = "OUT" if b == 0xF8 else "IN"
+            return f"{m} {sig & 3}, {REGS[(sig >> 2) & 3]}", 2
+        return f"; reservado 0x{b:02X}", 1
+    return f"; reservado 0x{b:02X}", 1  # inalcanzable (op es 0..F)
+
+
+def _destinos(mem: list[int]) -> set[int]:
+    """Direcciones destino de JMP/CALL/Jcc (para etiquetarlas)."""
+    destinos: set[int] = set()
+    i = 0
+    while i < len(mem):
+        b = mem[i]
+        op = b >> 4
+        _, ln = decodificar(mem, i)
+        if (op == 0xC and (b & 3) in (0, 1) and i + 1 < len(mem)) or op == 0xD:
+            destinos.add(mem[i + 1])
+        i += ln
+    return destinos
+
+
+def desensamblar(mem: list[int], etiquetas: bool = True) -> list[str]:
+    """Devuelve el listado linea a linea."""
+    destinos = _destinos(mem) if etiquetas else set()
+    lineas: list[str] = []
+    i = 0
+    while i < len(mem):
+        if i in destinos:
+            lineas.append(f"L_{i:04X}:")
+        texto, ln = decodificar(mem, i)
+        bs = " ".join(f"{x:02X}" for x in mem[i:i + ln])
+        lineas.append(f"  {i:04X}: {bs:<8} {texto}")
+        i += ln
+    return lineas
+
+
+def desensamblar_crudo(mem: list[int], etiquetas: bool = True) -> list[str]:
+    """Devuelve solo el codigo fuente reensamblable (sin direcciones ni bytes)."""
+    destinos = _destinos(mem) if etiquetas else set()
+    lineas: list[str] = []
+    i = 0
+    while i < len(mem):
+        if i in destinos:
+            lineas.append(f"L_{i:04X}:")
+        texto, ln = decodificar(mem, i)
+        lineas.append(f"        {texto}")
+        i += ln
+    return lineas
+
+
+def main(argv: list[str]) -> int:
+    args = argv[1:]
+    salida: Path | None = None
+    if "-o" in args:
+        k = args.index("-o")
+        salida = Path(args[k + 1])
+        del args[k:k + 2]
+    if not args:
+        print(__doc__)
+        return 2
+    mem = leer_fuente(Path(args[0]))
+    texto = "\n".join(desensamblar(mem)) + "\n"
+    if salida is not None:
+        salida.write_text(texto)
+        print(f"Listado escrito en {salida}")
+    else:
+        sys.stdout.write(texto)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

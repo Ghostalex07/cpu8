@@ -1,0 +1,47 @@
+[*]
+[*] GTKWave Analyzer v3.3.104 (w)1999-2022 BSI
+[*] cpu8 - ciclo de instruccion (fetch / operand / execute)
+[*]
+[dumpfile] "/home/vaca/proyectos/cpu/cpu8/build/cpu_tb.vcd"
+[timestart] 0
+[size] 1280 800
+[pos] -1 -1
+*-15.000000     -1
+[sst_width] 230
+[signals_width] 170
+[sst_expanded] 1
+[sst_vpaned_height] 240
+@28
+cpu_tb.clk
+cpu_tb.rst
+@22
+cpu_tb.dut.u_ctrl.state[1:0]
+cpu_tb.dut.u_ctrl.nstate[1:0]
+cpu_tb.dut.fetching
+cpu_tb.dut.pc_q[7:0]
+@28
+cpu_tb.dut.IR[7:0]
+cpu_tb.dut.instr[7:0]
+cpu_tb.dut.operand[7:0]
+@22
+cpu_tb.dut.u_ctrl.opcode[3:0]
+cpu_tb.dut.rf_we
+cpu_tb.dut.rf_waddr[1:0]
+cpu_tb.dut.rf_wdata[7:0]
+cpu_tb.dut.alu_op[3:0]
+cpu_tb.dut.alu_y[7:0]
+cpu_tb.dut.flag_z
+cpu_tb.dut.flag_c
+cpu_tb.dut.flag_n
+@22
+cpu_tb.dut.ram_we
+cpu_tb.dut.ram_addr[7:0]
+cpu_tb.dut.ram_wdata[7:0]
+cpu_tb.dut.ram_rdata[7:0]
+@22
+cpu_tb.dut.pc_inc
+cpu_tb.dut.pc_load
+cpu_tb.dut.out_wr
+cpu_tb.dut.out_valid
+cpu_tb.dut.out_data[7:0]
+cpu_tb.halted

@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # El Makefile del proyecto esta en cpu8/, no en la raiz del repositorio.
+    defaults:
+      run:
+        working-directory: cpu8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog verilator
+          python3 -m pip install --quiet pytest
+
+      - name: Verilator lint
+        run: make vlint
+
+      - name: Module tests (ALU/PC/RAM/regfile)
+        run: make modtests
+
+      - name: Program tests
+        run: make progtests
+
+      - name: IRQ test
+        run: make irqtest
+
+      - name: Verilator tests
+        run: make verilator
+
+      - name: Python tests (assembler + disassembler + ISS)
+        run: make pytools
+
+      - name: Differential fuzz (RTL vs reference model)
+        run: make difftest COUNT=150 SEED=1
+
+      - name: Regression harness (bytes + trace + fuzz)
+        run: make regress

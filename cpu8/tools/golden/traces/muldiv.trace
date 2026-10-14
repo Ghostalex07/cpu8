@@ -1,0 +1,37 @@
+WARNING: /home/vaca/proyectos/cpu/cpu8/tb/cpu_trace_tb.v:40: $readmemh(programs/muldiv.hex): Not enough words in the file for the requested range [0:255].
+=== traza de programs/muldiv.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   07   00   00   00   0 0 0 0  f0      
+  02   14   07   06   00   00   0 0 0 0  f0      
+  04   f6   2a   06   00   00   0 0 0 0  f0      
+  06   e0   2a   06   00   00   0 0 0 0  f0   OUT
+  07   10   14   06   00   00   0 0 0 0  f0      
+  09   14   14   14   00   00   0 0 0 0  f0      
+  0b   f6   90   14   00   00   0 1 1 0  f0      
+  0d   e0   90   14   00   00   0 1 1 0  f0   OUT
+  0e   d2   90   14   00   00   0 1 1 0  f0      
+  14   10   c1   14   00   00   0 1 1 0  f0      
+  16   e0   c1   14   00   00   0 1 1 0  f0   OUT
+  17   10   c8   14   00   00   0 1 1 0  f0      
+  19   14   c8   07   00   00   0 1 1 0  f0      
+  1b   f7   1c   07   00   00   0 0 0 0  f0      
+  1d   e0   1c   07   00   00   0 0 0 0  f0   OUT
+  1e   10   64   07   00   00   0 0 0 0  f0      
+  20   14   64   03   00   00   0 0 0 0  f0      
+  22   f7   21   03   00   00   0 0 0 0  f0      
+  24   e0   21   03   00   00   0 0 0 0  f0   OUT
+  25   10   09   03   00   00   0 0 0 0  f0      
+  27   14   09   00   00   00   0 0 0 0  f0      
+  29   f7   00   00   00   00   1 1 0 0  f0      
+  2b   e0   00   00   00   00   1 1 0 0  f0   OUT
+  2c   d2   00   00   00   00   1 1 0 0  f0      
+  32   10   c2   00   00   00   1 1 0 0  f0      
+  34   e0   c2   00   00   00   1 1 0 0  f0   OUT
+  35   10   00   00   00   00   1 1 0 0  f0      
+  37   14   00   07   00   00   1 1 0 0  f0      
+  39   f6   00   07   00   00   1 0 0 0  f0      
+  3b   d0   00   07   00   00   1 0 0 0  f0      
+  41   10   c3   07   00   00   1 0 0 0  f0      
+  43   e0   c3   07   00   00   1 0 0 0  f0   OUT
+  44   f0   c3   07   00   00   1 0 0 0  f0      
+(HLT tras 33 instrucciones)
