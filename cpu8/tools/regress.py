@@ -74,11 +74,14 @@ def _traza(vvp: Path, stem: str) -> str:
     r = subprocess.run(
         ["vvp", str(vvp), f"+hex=programs/{stem}.hex"],
         cwd=RAIZ, capture_output=True, text=True, check=True)
-    # El runtime de iverilog avisa de que el .hex tiene menos de 256 palabras
-    # ("Not enough words ...") incluyendo la RUTA ABSOLUTA del testbench.  Es
-    # dependiente del entorno (distinta en cada maquina/CI) y no debe formar
-    # parte de la traza dorada, asi que se descarta.
-    lineas = [l for l in r.stdout.splitlines() if not l.startswith("WARNING:")]
+    # El runtime de iverilog imprime diagnosticos dependientes del entorno en
+    # stdout y NO deben formar parte de la traza dorada:
+    #   - 11.0: el aviso de $readmemh ("Not enough words ...") con la RUTA
+    #     ABSOLUTA del testbench.
+    #   - 12.0: "<ruta>:<linea>: $finish called at <tiempo> (1ps)".
+    # Ambos llevan rutas/tiempos que cambian entre maquinas y versiones.
+    ruido = ("WARNING:", "$finish called at", "ERROR:", "$fatal")
+    lineas = [l for l in r.stdout.splitlines() if not any(m in l for m in ruido)]
     return "\n".join(lineas) + ("\n" if lineas else "")
 
 
