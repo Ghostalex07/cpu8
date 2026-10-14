@@ -103,11 +103,15 @@ Ver `programs/callret.asm`, `programs/stack.asm` con sus `.ref`.
 - **IRQ**: `irq_tb.v` verifica atención correcta
 - **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` carga `.hex` y compara con `.ref`
 - **Dirigido**: `cpu_directed_tb.v` cubre casos límite (CALL/RET, pila, E/S portada, etc.)
-- **Ensamblador**: `asm/test_assembler.py` (pytest) verifica la codificación instrucción a instrucción
+- **Ensamblador**: `asm/test_assembler.py` (pytest) verifica la codificación instrucción a instrucción; `asm/test_isa_table.py` comprueba que la tabla ISA no deriva del ensamblador ni del desensamblador.
 - **Diferencial**: `tools/iss.py` (modelo de referencia) se contrasta instrucción a
   instrucción con el RTL a través de `tb/cpu_dump_tb.v` (`make difftest`); los
   `.ref` dorados de `programs/` también se reproducen desde el modelo
-  (`tools/test_iss.py`).
+  (`tools/test_iss.py`). El fuzz diferencial cubre además la atención de
+  interrupciones: parte de los programas aleatorios se ejecutan con la señal `irq`
+  activa y el ISS modela `S_IRQ` igual que el RTL.
+- **Lint / docs**: `make lint` (ruff) revisa el código Python y `make docs-check`
+  verifica que `docs/OPCODES.md` está al día respecto a `asm/isa_table.py`.
 
 ## Herramientas (`tools/`)
 
@@ -138,8 +142,11 @@ Ver `programs/callret.asm`, `programs/stack.asm` con sus `.ref`.
   que las trazas doradas no ven (estas solo prueban *estabilidad*, no
   *corrección*). Uso: `make difftest [COUNT=N] [SEED=S] [ONLYPROGS=1]`.
 - **Tests del ISS** (`tools/test_iss.py`): micro-tests dirigidos de la ALU/flags/
-  pila/indexado/`Jcc`/puertos y contraste del ISS con los `.ref` dorados
+  pila/indexado/`Jcc`/puertos/IRQ y contraste del ISS con los `.ref` dorados
   (`make pytools`).
+- **Tabla ISA y documentación de opcodes** (`asm/isa_table.py` + `tools/gen_docs.py`):
+  la tabla es la fuente única de la ISA; `make docs` regenera `docs/OPCODES.md` y
+  `make docs-check` comprueba que está al día.
 
 ## Referencias
 

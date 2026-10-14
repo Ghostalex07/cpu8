@@ -31,10 +31,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y iverilog verilator
-          python3 -m pip install --quiet pytest
+          python3 -m pip install --quiet pytest ruff
 
       - name: Verilator lint
         run: make vlint
+
+      - name: Python lint (ruff)
+        run: make lint
 
       - name: Module tests (ALU/PC/RAM/regfile)
         run: make modtests
@@ -48,8 +51,11 @@ jobs:
       - name: Verilator tests
         run: make verilator
 
-      - name: Python tests (assembler + disassembler + ISS)
+      - name: Python tests (assembler + ISA table + disassembler + ISS)
         run: make pytools
+
+      - name: ISA docs up to date (docs/OPCODES.md)
+        run: make docs-check
 
       - name: Differential fuzz (RTL vs reference model)
         run: make difftest COUNT=150 SEED=1

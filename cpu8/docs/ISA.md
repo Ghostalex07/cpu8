@@ -369,6 +369,10 @@ En `programs/` hay varios programas de ejemplo escritos a mano con el ISA:
 | `extensions.asm`| Inmediatos `ADDI`/`SUBI`/`CMPI`, indexado `[rs+off]` y saltos con signo/estado (Fase 8) | `0A 0F 08 22 33 11 44 A1 A2 A3 B1 B2` (hex) |
 | `muldiv.asm`    | `MUL`/`DIV` hardware, incluido desbordamiento y división por cero (Fase 9) | `2A 90 C1 1C 21 00 C2 C3` (hex) |
 | `inout.asm`     | Entrada `IN` y salida por puerto `OUT n, rd` (Fase 9) | `10 12 AB 55` (hex) |
+| `euclid.asm`    | Máximo común divisor de (144,60) por el algoritmo de Euclides con `DIV`/`MUL` | `0C` (hex) |
+| `factorial.asm` | Factorial iterativo 5! = 120 con la `MUL` de hardware | `78` (hex) |
+| `primes.asm`    | Primos menores que 32 por división por tentativa con `DIV`/`MUL` | `02 03 05 07 0B 0D 11 13 17 1D 1F` (hex) |
+| `sort.asm`      | Ordena un array con bubble sort; los datos se declaran con la directiva `.db` | `01 02 03 05 08 09` (hex) |
 | `irq.asm`       | Interrupción: `EI`, contador 0..9 y manejador que cuenta 1 (Fase 7.5) | `0 1 2 3 4 5 6 7 8 9 1`                 |
 
 **Cómo se verifican.** Cada programa tiene un fichero hermano `programs/<nombre>.ref`
@@ -394,8 +398,20 @@ normal la deja a `0`, así que `irq.asm` se excluye del bucle de `progtests`).
 `make difftest` lo ejecuta en paralelo con el RTL (`tb/cpu_dump_tb.v`) sobre los
 programas demo y cientos de programas aleatorios, comparando el estado completo
 (registros, flags, `SP`, `PC`, RAM y `OUT`) **tras cada instrucción**. Esto
-comprueba que el RTL es *correcto*, no solo estable. `tools/test_iss.py` añade
-micro-tests dirigidos y contrasta el modelo con los `.ref`.
+comprueba que el RTL es *correcto*, no solo estable. Aproximadamente la mitad de
+los programas aleatorios se ejecutan además con la señal `irq` activa (umbral
+derivado de la semilla) y el ISS modela la atención de la interrupción igual que
+el RTL (estado `S_IRQ`: apila `PC`, baja `I` y salta al vector, sin retirar
+instrucción), de modo que el camino de interrupción también queda cubierto por el
+contraste diferencial. `tools/test_iss.py` añade micro-tests dirigidos (incluido
+IRQ) y contrasta el modelo con los `.ref`.
+
+**Fuente única de la ISA.** `asm/isa_table.py` describe la ISA de forma
+*machine-readable* (mnemónicos, formas de operando, bytes, banderas y
+descripción). `make docs` genera a partir de ella el listado de opcodes
+`docs/OPCODES.md`; `make docs-check` comprueba que ese fichero está al día y
+`asm/test_isa_table.py` (parte de `make pytools`) verifica que la tabla no deriva
+del ensamblador ni del desensamblador reales.
 
 ## 10. Extensiones de la Fase 7
 

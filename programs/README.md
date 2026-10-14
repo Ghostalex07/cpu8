@@ -25,6 +25,10 @@ make wave PROG=programs/countdown  # Abre GTKWave
 | `multiply.asm` | Multiplicación por suma repetida | Algoritmo con bucles y acumulador. |
 | `muldiv.asm` | `MUL`/`DIV` hardware (Fase 9) | Multiplicación, desbordamiento (`C=1`), división y división por cero (`C=1`). |
 | `inout.asm` | Entrada `IN` y salida por puerto `OUT n, rd` (Fase 9) | Lectura del puerto de entrada y escritura en puertos 0/1/2. |
+| `euclid.asm` | Máximo común divisor (algoritmo de Euclides) | MCD de (144,60) con resto `a − (a/b)·b` usando `DIV`/`MUL` de hardware. |
+| `factorial.asm` | Factorial iterativo (5! = 120) | Bucle con `MUL` y `DEC`; termina cuando `B` llega a 0. |
+| `primes.asm` | Primos menores que 32 (división por tentativa) | Bucles anidados + celdas de RAM; usa `DIV`/`MUL` para el resto. |
+| `sort.asm` | Ordena un array con bubble sort | Directiva `.db` para los datos e indexado `[B+off]`; ordena en sitio. |
 | `stack.asm` | Operaciones `PUSH`/`POP` + `RET` | Correcto uso de pila y recuperación de dirección. |
 
 ## Archivos asociados

@@ -16,6 +16,8 @@ IVERILOG ?= iverilog
 VVP      ?= vvp
 GTKWAVE  ?= gtkwave
 PYTHON   ?= python3
+# Ruff para el lint del codigo Python (config en ruff.toml); `pip install ruff`.
+RUFF     ?= ruff
 # Verilator (Fase 7.6): usa el del PATH o, si no, el instalado en ~/.local/bin.
 VERILATOR ?= $(shell command -v verilator 2>/dev/null || echo $(HOME)/.local/bin/verilator)
 # Flujo FPGA (Fase 7.6): yosys + nextpnr-ice40 + icepack.  Se pueden usar los del
@@ -147,9 +149,22 @@ trace: dirs
 disasm:
 	$(PYTHON) $(TOOLS_DIR)/disasm.py $(if $(FICHERO),$(FICHERO),$(PROG).hex)
 
-## --- Tests de las herramientas Python (ensamblador + desensamblador + ISS) ---
+## --- Tests de las herramientas Python (ensamblador + tabla ISA + desensamblador + ISS) ---
 pytools:
-	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py -q
+	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
+	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py -q
+
+## --- Lint del codigo Python con Ruff (config en ruff.toml) ---
+lint:
+	$(RUFF) check .
+
+## --- Genera la tabla de opcodes docs/OPCODES.md desde la fuente unica asm/isa_table.py ---
+docs:
+	$(PYTHON) $(TOOLS_DIR)/gen_docs.py
+
+## --- Comprueba que docs/OPCODES.md esta al dia (para CI; no escribe) ---
+docs-check:
+	$(PYTHON) $(TOOLS_DIR)/gen_docs.py --check
 
 ## --- Fuzz diferencial: RTL (tb/cpu_dump_tb.v) contra el modelo tools/iss.py ---
 ## Ejecuta cada programa en el RTL y en el modelo de referencia y compara el
@@ -218,6 +233,13 @@ fpga: dirs
 clean:
 	rm -rf $(BUILD)
 
+.PHONY: all test modtests irqtest progtests asm sim wave trace disasm \
+	pytools lint docs docs-check difftest regress regress-update verilator \
+	vlint fpga clean help check
+
+## --- Bateria completa local: lo mismo que ejecuta la CI ---
+check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
+
 help:
 	@echo "make test                          (modulos + programas demo + irq)"
 	@echo "make verilator                     (simula el RTL con Verilator)"
@@ -227,9 +249,13 @@ help:
 	@echo "make wave PROG=programs/<nombre>   (ensambla y simula; abre GTKWave)"
 	@echo "make trace PROG=programs/<nombre>  (traza: una linea por instruccion)"
 	@echo "make disasm PROG=programs/<nombre> (desensambla el .hex a un listado)"
-	@echo "make pytools                       (pytest de ensamblador, desensamblador e ISS)"
+	@echo "make pytools                       (pytest de ensamblador, tabla ISA, desensamblador e ISS)"
+	@echo "make lint                          (ruff: lint del codigo Python)"
+	@echo "make docs                          (regenera docs/OPCODES.md desde la tabla ISA)"
+	@echo "make docs-check                    (comprueba que docs/OPCODES.md esta al dia)"
 	@echo "make difftest [COUNT=N] [SEED=S]   (fuzz diferencial: RTL vs modelo de referencia)"
 	@echo "make regress                       (regresion: bytes + trazas + fuzz)"
 	@echo "make regress-update                (regenera la referencia dorada)"
+	@echo "make check                         (bateria completa: lo mismo que la CI)"
 	@echo "make asm  PROG=programs/<nombre>   (solo ensambla)"
 	@echo "make clean"

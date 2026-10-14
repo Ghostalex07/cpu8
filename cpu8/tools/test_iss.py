@@ -168,6 +168,28 @@ def test_branch_cond_y_needs_operand() -> None:
     assert iss.needs_operand(0xF0) is False    # HLT
 
 
+def _prog_irq() -> list[int]:
+    """LDI A,0 ; EI ; [0x03] JMP 0x03 (bucle) ; [0x08] LDI A,0x42 ; RET."""
+    return [0x10, 0x00, 0xF2, 0xC0, 0x03, 0x00, 0x00, 0x00,
+            0x10, 0x42, 0xF1]
+
+
+def test_irq_se_atiende_en_el_vector() -> None:
+    m = iss.ISS(_prog_irq(), irq_at=3)
+    m.run(20)
+    assert 0x08 in [r[0] for r in m.rows]   # se ejecuto el manejador (vector 0x08)
+    assert m.regs[0] == 0x42                 # ...que puso A=0x42
+
+
+def test_irq_no_se_atiende_sin_ei() -> None:
+    # Sin EI el flag I es 0: aunque irq este pedida desde el principio, no se atiende.
+    prog = [0x10, 0x00, 0xC0, 0x02]          # LDI A,0 ; JMP 0x02 (bucle)
+    m = iss.ISS(prog, irq_at=0)
+    m.run(10)
+    assert 0x08 not in [r[0] for r in m.rows]
+    assert m.regs[0] == 0x00
+
+
 # ---------------------------------------------------------------------------
 #  Contraste con los dorados (programs/*.asm vs programs/*.ref)
 # ---------------------------------------------------------------------------

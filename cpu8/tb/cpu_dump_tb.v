@@ -22,7 +22,8 @@
 
 module cpu_dump_tb;
 
-    reg clk = 0, rst = 1, irq = 0;
+    reg clk = 0, rst = 1;
+    wire irq;
     reg [7:0] in_data = 8'h00;
     wire       halted, out_valid;
     wire [7:0] out_data;
@@ -40,7 +41,13 @@ module cpu_dump_tb;
     always @(*) in_data = 8'h10 + {6'b0, in_port};
 
     reg [8*256-1:0] hexfile;
-    integer maxi, n, i, dummy;
+    integer maxi, i, dummy;
+    integer n = 0;
+    // Nivel de irq: se activa cuando ya se han retirado >= irq_at instrucciones
+    // (mismo convenio que tools/iss.py).  Por defecto irq_at es enorme => nunca
+    // se atiende interrupcion, de modo que el comportamiento sin +irq no cambia.
+    integer irq_at = 100000000;
+    assign irq = (n >= irq_at);
 
     // PC de la instruccion en curso: se latchea al cargar el IR (S_FETCH).
     reg [7:0] trace_pc;
@@ -64,10 +71,11 @@ module cpu_dump_tb;
         if (!$value$plusargs("hex=%s", hexfile)) hexfile = "programs/countdown.hex";
         maxi = 5000;
         dummy = $value$plusargs("max=%d", maxi);
+        dummy = $value$plusargs("irq=%d", irq_at);
         for (i = 0; i < 256; i = i + 1) dut.u_ram.mem[i] = 8'h00;
         $readmemh(hexfile, dut.u_ram.mem);
         n = 0;
-        rst = 1; irq = 0;
+        rst = 1;
         repeat (2) @(posedge clk);
         @(negedge clk) rst = 0;
     end

@@ -81,7 +81,8 @@ def _traza(vvp: Path, stem: str) -> str:
     #   - 12.0: "<ruta>:<linea>: $finish called at <tiempo> (1ps)".
     # Ambos llevan rutas/tiempos que cambian entre maquinas y versiones.
     ruido = ("WARNING:", "$finish called at", "ERROR:", "$fatal")
-    lineas = [l for l in r.stdout.splitlines() if not any(m in l for m in ruido)]
+    lineas = [ln for ln in r.stdout.splitlines()
+              if not any(m in ln for m in ruido)]
     return "\n".join(lineas) + ("\n" if lineas else "")
 
 
@@ -103,7 +104,7 @@ def _comprobar_bytes() -> int:
     if not man.exists():
         print(f"FALTA {man.relative_to(RAIZ)} (ejecuta `make regress-update`)")
         return 1
-    esperado = dict(l.split() for l in man.read_text().splitlines() if l.strip())
+    esperado = dict(ln.split() for ln in man.read_text().splitlines() if ln.strip())
     actual = _hex_actuales()
     fallos = 0
     for n in sorted(set(esperado) | set(actual)):

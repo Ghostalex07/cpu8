@@ -9,7 +9,7 @@ culpable se guarda para reproducirlo.
 
 Uso::
 
-    python3 tools/difftest.py                 # 100 aleatorios + los programas demo
+    python3 tools/difftest.py                 # 100 aleatorios + los programas demo (max 4096)
     python3 tools/difftest.py --count 500 --seed 1234
     python3 tools/difftest.py --progs         # solo los programs/*.asm
     make difftest
@@ -59,16 +59,19 @@ def compilar_tb() -> Path:
     return salida
 
 
-def run_rtl(vvp: Path, hexfile: Path, max_steps: int) -> list[str]:
+def run_rtl(vvp: Path, hexfile: Path, max_steps: int,
+            irq_at: int | None = None) -> list[str]:
+    nivel = 10 ** 9 if irq_at is None else irq_at
     res = subprocess.run(
-        [VVP, str(vvp), f"+hex={hexfile}", f"+max={max_steps}"],
+        [VVP, str(vvp), f"+hex={hexfile}", f"+max={max_steps}", f"+irq={nivel}"],
         check=True, capture_output=True, text=True)
     return [ln for ln in res.stdout.splitlines()
             if ln[:2] in ("I ", "M ", "END") or ln.startswith("END")]
 
 
-def run_iss(mem: list[int], max_steps: int) -> list[str]:
-    modelo = iss.ISS(mem, irq_vector=IRQ_VECTOR)
+def run_iss(mem: list[int], max_steps: int,
+            irq_at: int | None = None) -> list[str]:
+    modelo = iss.ISS(mem, irq_vector=IRQ_VECTOR, irq_at=irq_at)
     modelo.run(max_steps)
     return modelo.dump()
 
@@ -94,17 +97,20 @@ def _guardar_fallo(destino: Path, fuente: str, hexfile: Path) -> None:
 
 
 def probar(nombre: str, fuente: str, bytes_prog: list[int], vvp: Path,
-           max_steps: int, dir_fallos: Path) -> bool:
+           max_steps: int, dir_fallos: Path,
+           irq_at: int | None = None) -> bool:
     with tempfile.TemporaryDirectory() as td:
         hexfile = Path(td) / "prog.hex"
         hexfile.write_text("\n".join(f"{b:02X}" for b in bytes_prog) + "\n")
-        rtl = run_rtl(vvp, hexfile, max_steps)
-        modelo = run_iss(bytes_prog, max_steps)
+        rtl = run_rtl(vvp, hexfile, max_steps, irq_at)
+        modelo = run_iss(bytes_prog, max_steps, irq_at)
         ok, k, detalle = comparar(rtl, modelo)
         if ok:
-            print(f"  ok   {nombre} ({len(_norm(rtl)) - 2} instrucciones)")
+            etiqueta = "" if irq_at is None else f" [irq>={irq_at}]"
+            print(f"  ok   {nombre}{etiqueta} ({len(_norm(rtl)) - 2} instrucciones)")
             return True
-        print(f"  FALLO {nombre} en la instruccion #{k}")
+        print(f"  FALLO {nombre} en la instruccion #{k}"
+              + ("" if irq_at is None else f" [irq>={irq_at}]"))
         print(f"   {detalle}")
         print("   --- programa ---")
         for ln in disasm.desensamblar(bytes_prog):
@@ -119,9 +125,11 @@ def main() -> int:
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--count", type=int, default=100, help="programas aleatorios")
     ap.add_argument("--seed", type=int, default=1)
-    ap.add_argument("--max", type=int, default=2000, help="tope de instrucciones")
+    ap.add_argument("--max", type=int, default=4096, help="tope de instrucciones")
     ap.add_argument("--progs", action="store_true", help="solo programs/*.asm")
     ap.add_argument("--instr", type=int, default=40, help="instrucciones por programa aleatorio")
+    ap.add_argument("--irq-prob", type=float, default=0.5,
+                    help="prob. de ejecutar un programa aleatorio con irq activo")
     args = ap.parse_args()
 
     vvp = compilar_tb()
@@ -145,7 +153,13 @@ def main() -> int:
             rng = random.Random(args.seed * 1000003 + i)
             src = fuzz.generar_fuente(rng, args.instr)
             b, _, _ = assembler.ensamblar(src)
-            if not probar(f"fuzz_{args.seed}_{i}", src, b, vvp, args.max, dir_fallos):
+            # La mitad de los programas (aprox.) se ejecutan ademas con irq activo
+            # para cubrir el camino de interrupcion (antes solo lo cubria irqtest).
+            irq_at = None
+            if rng.random() < args.irq_prob:
+                irq_at = rng.randrange(0, max(2, args.max // 8 + 2))
+            if not probar(f"fuzz_{args.seed}_{i}", src, b, vvp, args.max,
+                          dir_fallos, irq_at):
                 fallos += 1
 
     if fallos:

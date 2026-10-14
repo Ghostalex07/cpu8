@@ -95,7 +95,7 @@ class ISS:
     """Simulador de referencia del cpu8."""
 
     def __init__(self, mem: list[int] | None = None,
-                 irq_vector: int = 0x08, in_fn=None):
+                 irq_vector: int = 0x08, in_fn=None, irq_at: int | None = None):
         self.mem = [0] * 256
         if mem:
             for i, b in enumerate(mem[:256]):
@@ -103,6 +103,10 @@ class ISS:
         self.irq_vector = irq_vector & MASK
         # Convenio de entrada de los testbenches: puerto n -> 0x10 + n.
         self.in_fn = in_fn or (lambda port: (0x10 + port) & MASK)
+        # Modelo del nivel de irq (None = nunca).  Si es un entero, se replica el
+        # convenio del testbench diferencial: irq activo cuando ya se han retirado
+        # >= irq_at instrucciones (ver tb/cpu_dump_tb.v y run()).
+        self.irq_at = irq_at
         self.reset()
 
     def reset(self) -> None:
@@ -238,10 +242,35 @@ class ISS:
                out_valid, self.out_data, self.out_port)
         return row
 
+    def take_irq(self) -> None:
+        """Atiende una interrupcion (estado S_IRQ): apila PC, baja I y salta al vector.
+
+        No genera fila de traza: en el RTL el estado S_IRQ no pasa por S_EXEC, de
+        modo que no se retira ninguna instruccion.  Hay que replicarlo igual.
+        """
+        self.mem[self.SP] = self.PC
+        self.SP = (self.SP - 1) & MASK
+        self.fi = 0
+        self.PC = self.irq_vector
+
     def run(self, max_steps: int = 5000) -> list[tuple]:
-        """Ejecuta hasta HLT o ``max_steps``; devuelve las filas de traza."""
+        """Ejecuta hasta HLT o ``max_steps``; devuelve las filas de traza.
+
+        Si ``irq_at`` no es None, el nivel de irq se modela como en el testbench
+        diferencial (``irq = (n_retiradas >= irq_at)``).  Al comienzo de cada
+        instruccion, si el flag I esta activo y hay irq pendiente, se atiende la
+        interrupcion (sin retirar instruccion, como el estado S_IRQ del RTL).
+        """
         self.rows = []
+        guard = 0
+        limite = 10 * max_steps + 1000
         while not self.halted and len(self.rows) < max_steps:
+            guard += 1
+            if guard > limite:      # red de seguridad ante bucles patologicos
+                break
+            if self.irq_at is not None and self.fi and len(self.rows) >= self.irq_at:
+                self.take_irq()
+                continue
             self.rows.append(self.step())
         return self.rows
 
