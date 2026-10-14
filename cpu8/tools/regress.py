@@ -111,8 +111,22 @@ def _comprobar_bytes() -> int:
     return fallos
 
 
+def _primera_diferencia(esperado: str, actual: str) -> str:
+    """Descripcion de la primera linea que difiere, con repr (ve espacios)."""
+    ea, aa = esperado.splitlines(), actual.splitlines()
+    for i in range(max(len(ea), len(aa))):
+        le = ea[i] if i < len(ea) else "<falta>"
+        la = aa[i] if i < len(aa) else "<falta>"
+        if le != la:
+            return (f"    linea {i + 1}:\n"
+                    f"      esperado: {le!r}\n"
+                    f"      actual  : {la!r}")
+    return "    (sin diferencias linea a linea)"
+
+
 def _comprobar_trazas() -> int:
     vvp = _compilar_traza()
+    dump = RAIZ / "build" / "regress"
     fallos = 0
     n = 0
     for p in _programas():
@@ -124,10 +138,18 @@ def _comprobar_trazas() -> int:
             fallos += 1
             continue
         n += 1
-        if _traza(vvp, p.stem) != g.read_text():
+        esperado = g.read_text()
+        actual = _traza(vvp, p.stem)
+        if actual != esperado:
             print(f"  FALLO traza {p.stem} "
                   f"(`make trace PROG=programs/{p.stem}` para inspeccionar)")
+            print(_primera_diferencia(esperado, actual))
+            dump.mkdir(parents=True, exist_ok=True)
+            (dump / f"{p.stem}.expected.trace").write_text(esperado)
+            (dump / f"{p.stem}.actual.trace").write_text(actual)
             fallos += 1
+    if fallos:
+        print(f"  trazas volcadas en {dump.relative_to(RAIZ)}/ (expected/actual)")
     print(f"  trazas: {n} programas, {fallos} fallos")
     return fallos
 
