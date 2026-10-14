@@ -1,0 +1,48 @@
+name: Propuesta de mejora
+description: Propón una nueva instrucción, herramienta o mejora del proyecto.
+title: "[Mejora] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problema
+    attributes:
+      label: ¿Qué problema resuelve?
+      description: Describe la necesidad o la limitación actual.
+    validations:
+      required: true
+  - type: textarea
+    id: propuesta
+    attributes:
+      label: Propuesta
+      description: ¿Qué te gustaría que hiciera el proyecto?
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área
+      multiple: true
+      options:
+        - ISA (nuevas instrucciones / modos)
+        - RTL (rtl/)
+        - Ensamblador (asm/)
+        - Herramientas de verificación (tools/)
+        - Documentación
+        - FPGA / síntesis
+        - Otro
+    validations:
+      required: true
+  - type: textarea
+    id: alternativas
+    attributes:
+      label: Alternativas consideradas
+      description: Otras opciones que hayas valorado (opcional).
+    validations:
+      required: false
+  - type: checkboxes
+    id: compatibilidad
+    attributes:
+      label: Compatibilidad
+      options:
+        - label: La propuesta mantiene la retrocompatibilidad (los `.hex` existentes no cambian de bytes).
+          required: false

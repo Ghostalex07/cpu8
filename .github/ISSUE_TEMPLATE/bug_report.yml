@@ -1,0 +1,62 @@
+name: Informe de fallo
+description: Notifica un comportamiento incorrecto en la CPU, el ensamblador o las herramientas.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Gracias por tomarte el tiempo de rellenar este informe. Cuanto más
+        concreta sea la reproducción, más fácil será arreglarlo.
+  - type: textarea
+    id: descripcion
+    attributes:
+      label: Descripción
+      description: ¿Qué ocurre? ¿Qué esperabas que ocurriera?
+    validations:
+      required: true
+  - type: textarea
+    id: reproducir
+    attributes:
+      label: Pasos para reproducir
+      description: Comandos, programa `.asm` o secuencia que provoca el fallo.
+      placeholder: |
+        1. cd cpu8
+        2. make test
+        3. ...
+      render: shell
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Área afectada
+      multiple: true
+      options:
+        - RTL (rtl/)
+        - Testbenches (tb/)
+        - Ensamblador (asm/)
+        - Desensamblador (tools/disasm.py)
+        - Modelo de referencia / ISS (tools/iss.py)
+        - Difftest / regress
+        - Documentación
+        - CI
+        - Otro
+    validations:
+      required: true
+  - type: textarea
+    id: salida
+    attributes:
+      label: Salida relevante
+      description: Mensajes de error, trace de la traza o salida de `make`.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: versiones
+    attributes:
+      label: Versiones del entorno
+      description: Versiones de iverilog, verilator, python3 (si son relevantes).
+      placeholder: "iverilog 12.0, verilator 5.x, python 3.12"
+    validations:
+      required: false
