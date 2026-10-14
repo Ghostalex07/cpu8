@@ -74,7 +74,12 @@ def _traza(vvp: Path, stem: str) -> str:
     r = subprocess.run(
         ["vvp", str(vvp), f"+hex=programs/{stem}.hex"],
         cwd=RAIZ, capture_output=True, text=True, check=True)
-    return r.stdout
+    # El runtime de iverilog avisa de que el .hex tiene menos de 256 palabras
+    # ("Not enough words ...") incluyendo la RUTA ABSOLUTA del testbench.  Es
+    # dependiente del entorno (distinta en cada maquina/CI) y no debe formar
+    # parte de la traza dorada, asi que se descarta.
+    lineas = [l for l in r.stdout.splitlines() if not l.startswith("WARNING:")]
+    return "\n".join(lineas) + ("\n" if lineas else "")
 
 
 def actualizar() -> int:
