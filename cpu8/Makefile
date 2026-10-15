@@ -7,6 +7,7 @@
 #    make sim  PROG=programs/foo  -> assembles foo.asm and simulates the full CPU
 #    make wave PROG=programs/foo  -> same as sim, and opens GTKWave with the trace
 #    make asm  PROG=programs/foo  -> assemble only
+#    make debug PROG=programs/foo -> interactive debugger (step/breakpoints/watch)
 #    make clean               -> removes the build/ artifacts
 #
 #  Tools (can be overridden): iverilog, vvp, gtkwave, python3.
@@ -63,7 +64,7 @@ PROG ?= $(PROG_DIR)/countdown
 FPGA_DIR  = fpga
 FPGA_PROG ?= countdown
 
-.PHONY: all test modtests progtests irqtest sim wave asm verilator vlint fpga clean dirs help trace disasm pytools regress regress-update difftest
+.PHONY: all test modtests progtests irqtest sim wave asm verilator vlint fpga clean dirs help trace disasm debug pytools regress regress-update difftest
 
 all: test
 
@@ -149,10 +150,18 @@ trace: dirs
 disasm:
 	$(PYTHON) $(TOOLS_DIR)/disasm.py $(if $(HEXFILE),$(HEXFILE),$(PROG).hex)
 
-## --- Tests for the Python tools (assembler + ISA table + disassembler + ISS) ---
+## --- Interactive debugger over the reference model (tools/iss.py) ---
+## Steps instruction by instruction, with breakpoints, watchpoints, memory and
+## disassembly dumps, and a cycle count that models the FSM of rtl/control.v.
+## Usage: make debug PROG=programs/<name>
+debug:
+	$(PYTHON) $(TOOLS_DIR)/debugger.py $(if $(wildcard $(PROG).asm),$(PROG).asm,$(PROG).hex)
+
+## --- Tests for the Python tools (assembler + ISA table + disassembler + ISS + debugger) ---
 pytools:
 	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
-	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py -q
+	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py \
+	  $(TOOLS_DIR)/test_debugger.py -q
 
 ## --- Lint of the Python code with Ruff (config in ruff.toml) ---
 lint:
@@ -233,7 +242,7 @@ fpga: dirs
 clean:
 	rm -rf $(BUILD)
 
-.PHONY: all test modtests irqtest progtests asm sim wave trace disasm \
+.PHONY: all test modtests irqtest progtests asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest regress regress-update verilator \
 	vlint fpga clean help check
 
@@ -249,7 +258,8 @@ help:
 	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"
 	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"
 	@echo "make disasm PROG=programs/<name>   (disassembles the .hex to a listing)"
-	@echo "make pytools                       (pytest for assembler, ISA table, disassembler and ISS)"
+	@echo "make debug PROG=programs/<name>    (interactive debugger: step/breakpoints/watch)"
+	@echo "make pytools                       (pytest for assembler, ISA table, disassembler, ISS and debugger)"
 	@echo "make lint                          (ruff: lint of the Python code)"
 	@echo "make docs                          (regenerates docs/OPCODES.md from the ISA table)"
 	@echo "make docs-check                    (checks that docs/OPCODES.md is up to date)"

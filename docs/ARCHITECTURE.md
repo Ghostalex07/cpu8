@@ -122,6 +122,16 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 - **Trace debugger** (`tb/cpu_trace_tb.v`): runs a program and prints one line per
   retired instruction with `PC`, `IR`, `A`, `B`, `C`, `D`, `Z`, `C`, `N`, `V` and
   `SP` (`make trace PROG=programs/<name>`).
+- **Interactive debugger** (`tools/debugger.py`): steps a `.asm`/`.hex` program on
+  the reference model (so it needs no RTL build) with `gdb`-like commands —
+  `step`/`next` (which steps *over* a `CALL`), `continue`, `break`, `watch`
+  (registers, flags or a memory cell), `mem`, `disasm`, `trace`, `out`, `reset`,
+  `labels`. It also reports cycles: it models the 5-state FSM of `rtl/control.v`
+  (`FETCH + EXEC` = 2 cycles for 1-byte instructions, `FETCH + OPR + EXEC` = 3 for
+  2-byte ones, and 1 cycle per interrupt serviced), so it can be used to measure a
+  program's CPI. Usage: `make debug PROG=programs/<name>` or
+  `python3 tools/debugger.py programs/<name>.asm`; its tests live in
+  `tools/test_debugger.py` (`make pytools`).
 - **Regression harness** (`tools/regress.py`): checks that (1) assembly produces
   the same bytes as the golden reference (`tools/golden/hex.sha256`), (2) each
   program's trace matches the golden one (`tools/golden/traces/*.trace`) and

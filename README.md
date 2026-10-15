@@ -50,7 +50,7 @@ Everything runs from the `cpu8/` folder:
 cd cpu8
 
 make test        # module testbenches + assemble/simulate/compare programs/*.asm
-make pytools     # pytest: assembler, ISA table, disassembler and ISS model
+make pytools     # pytest: assembler, ISA table, disassembler, ISS model and debugger
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
 make difftest    # differential RTL-vs-model fuzzing
@@ -61,6 +61,7 @@ make sim  PROG=programs/countdown   # simulate a program (compares with its .ref
 make wave PROG=programs/countdown   # same, and opens GTKWave
 make trace PROG=programs/countdown  # trace: one line per retired instruction
 make disasm PROG=programs/countdown # disassemble the .hex into a listing
+make debug PROG=programs/countdown  # interactive debugger: step/breakpoints/watch
 ```
 
 `make help` shows the full list of targets.
@@ -102,6 +103,7 @@ make disasm PROG=programs/countdown # disassemble the .hex into a listing
     ├── programs/           # .asm demos (+ generated .hex and .ref)
     ├── tools/
     │   ├── disasm.py       # disassembler
+    │   ├── debugger.py     # interactive debugger (step/breakpoints/watch)
     │   ├── iss.py          # Python reference model (ISS)
     │   ├── difftest.py     # differential RTL-vs-ISS fuzzing
     │   ├── regress.py      # golden regression
@@ -153,6 +155,10 @@ The project relies on several layers of checking, all runnable locally:
   full state **after every instruction** (registers, flags, `SP`, `PC`, `OUT`
   sequence and final RAM). This proves the RTL is *correct*, not merely *stable*.
   The interrupt path is covered too.
+- **Interactive debugger** (`tools/debugger.py`): steps a program on the ISS with
+  breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly, and
+  reports a cycle count that models the `control.v` FSM
+  (`make debug PROG=programs/<name>`).
 - **Golden regression** (`make regress`): hash of the assembled bytes, reference
   traces and assemble→disassemble→assemble *round-trip* of hundreds of random
   programs.

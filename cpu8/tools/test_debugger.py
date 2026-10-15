@@ -1,0 +1,212 @@
+#!/usr/bin/env python3
+"""Tests for the interactive debugger ``tools/debugger.py``.
+
+They drive the :class:`debugger.Debugger` programmatically (no stdin): they
+check the execution primitives, the cycle accounting that models ``control.v``,
+the breakpoints/watchpoints and the command parser.
+
+Run with ``make pytools`` or ``python3 -m pytest tools/test_debugger.py``.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+import pytest
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "asm"))
+
+import assembler  # noqa: E402
+import debugger  # noqa: E402
+
+PROG_DIR = ROOT / "programs"
+
+# Fixture program (addresses in the comment):
+#   0: 10 03  LDI A, 0x03   (2 bytes, 3 cycles)
+#   2: 14 01  LDI B, 0x01   (2 bytes, 3 cycles)
+#   4: E0     OUT A         (1 byte,  2 cycles)
+#   5: 61     SUB A, B      (1 byte,  2 cycles)
+#   6: D1 04  JNZ 0x04      (2 bytes, 3 cycles)
+#   8: F0     HLT
+COUNT = """\
+    LDI A, 0x03
+    LDI B, 0x01
+loop:
+    OUT A
+    SUB A, B
+    JNZ loop
+    HLT
+"""
+
+
+def build(source: str, **kw):
+    mem, labels, _ = assembler.ensamblar(source)
+    logs: list[str] = []
+    return debugger.Debugger(mem, labels, out=logs.append, **kw), logs
+
+
+# ---- loading ---------------------------------------------------------------
+def test_load_asm_has_labels_and_hex_does_not():
+    mem, labels = debugger.load_program(PROG_DIR / "countdown.asm")
+    assert len(mem) == 9
+    assert labels["loop"] == 0x04
+
+    mem_hex, labels_hex = debugger.load_program(PROG_DIR / "countdown.hex")
+    assert mem_hex == mem
+    assert labels_hex == {}
+
+
+# ---- execution and cycles --------------------------------------------------
+def test_step_advances_and_counts_cycles():
+    dbg, _ = build(COUNT)
+    dbg.step()                      # LDI A (2 bytes -> 3 cycles)
+    assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (2, 3, 1)
+    dbg.step()                      # LDI B (2 bytes -> 3 cycles)
+    assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (4, 6, 2)
+    dbg.step()                      # OUT A (1 byte -> 2 cycles)
+    assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (5, 8, 3)
+    assert dbg.iss.outs == [(3, 0)]
+
+
+def test_hlt_halts_and_warns_on_further_steps():
+    dbg, logs = build(COUNT)
+    dbg.run()
+    assert dbg.iss.halted
+    assert dbg.iss.outs == [(3, 0), (2, 0), (1, 0)]
+    dbg.step()
+    assert any("halted" in line for line in logs)
+
+
+def test_run_cycle_total_matches_instruction_lengths():
+    dbg, _ = build(COUNT)
+    dbg.run()
+    # LDI,LDI (2B each -> 3) = 6; the loop body OUT,SUB (1B -> 2) + JNZ (2B -> 3)
+    # runs 3 times = 3 * (2 + 2 + 3) = 21; HLT (1B -> 2).  Total = 6 + 21 + 2 = 29.
+    assert dbg.cycles == 29
+    assert dbg.retired == 12
+    assert dbg.irqs == 0
+
+
+# ---- breakpoints -----------------------------------------------------------
+def test_breakpoint_stops_run_before_executing():
+    dbg, _ = build(COUNT)
+    dbg.breakpoints.add(0x04)
+    dbg.run()
+    assert not dbg.iss.halted
+    assert dbg.hit_break == 0x04
+    assert dbg.iss.PC == 0x04
+
+
+def test_clear_removes_breakpoints():
+    dbg, _ = build(COUNT)
+    dbg.handle("break 0x04")
+    dbg.handle("break loop")
+    assert dbg.breakpoints == {0x04}
+    dbg.handle("clear")
+    assert dbg.breakpoints == set()
+
+
+# ---- watchpoints -----------------------------------------------------------
+def test_watch_reports_register_change():
+    dbg, logs = build(COUNT)
+    dbg.handle("watch A")
+    dbg.step()                      # LDI A, 3
+    dbg.step()                      # LDI B, 1
+    dbg.step()                      # OUT A
+    dbg.step()                      # SUB A, B -> A changes 3 -> 2
+    assert any("watch: A 03 -> 02" in line for line in logs)
+
+
+def test_watch_memory_cell():
+    dbg, _ = build("LDI A, 0x2A\nST A, [0x40]\nHLT\n")
+    dbg.handle("watch @0x40")
+    dbg.run()
+    assert dbg.watches["@0x40"] == 0x2A
+
+
+def test_unwatch_and_unknown_target():
+    dbg, logs = build(COUNT)
+    dbg.handle("watch PC")
+    assert "PC" in dbg.watches
+    dbg.handle("unwatch PC")
+    assert "PC" not in dbg.watches
+    dbg.handle("watch bogus")
+    assert any("cannot watch" in line for line in logs)
+
+
+# ---- next steps over CALL --------------------------------------------------
+def test_next_steps_over_call():
+    src = "LDI A, 1\nCALL sub\nOUT A\nHLT\nsub: ADD A, A\nRET\n"
+    dbg, _ = build(src)
+    dbg.step()                      # LDI
+    assert dbg.iss.PC == 2
+    dbg.next()                      # steps over CALL, runs the subroutine
+    assert dbg.iss.PC == 4
+    assert dbg.iss.regs[0] == 2     # 1 + 1 inside `sub`
+
+
+# ---- interrupts ------------------------------------------------------------
+def test_irq_counts_cycles_and_interrupts():
+    dbg, _ = build("EI\nHLT\n", irq_at=1)
+    dbg.step()                      # EI
+    assert dbg.iss.fi == 1
+    dbg.step()                      # services the interrupt (no instruction retired)
+    assert dbg.irqs == 1
+    assert dbg.retired == 1
+    assert dbg.cycles == 3          # 2 (EI is 1 byte) + 1 (interrupt)
+    assert dbg.iss.PC == 0x08       # jumped to the vector
+
+
+# ---- command parser / formatting ------------------------------------------
+def test_unknown_command_is_harmless():
+    dbg, logs = build(COUNT)
+    assert dbg.handle("frobnicate") is True
+    assert any("unknown command" in line for line in logs)
+
+
+def test_quit_returns_false():
+    dbg, _ = build(COUNT)
+    assert dbg.handle("quit") is False
+    assert dbg.handle("q") is False
+
+
+def test_reset_clears_counters():
+    dbg, _ = build(COUNT)
+    dbg.step()
+    dbg.run()
+    dbg.handle("reset")
+    assert (dbg.cycles, dbg.retired, dbg.irqs) == (0, 0, 0)
+    assert dbg.iss.PC == 0 and not dbg.iss.halted
+
+
+def test_disasm_and_mem_produce_output():
+    dbg, logs = build(COUNT)
+    dbg.handle("disasm 0 3")
+    assert any("LDI A, 0x03" in line for line in logs)
+    logs.clear()
+    dbg.handle("mem 0 4")
+    assert any(line.startswith("00: 10 03 14 01") for line in logs)
+
+
+def test_to_int_accepts_several_forms():
+    labels = {"loop": 0x04}
+    assert debugger._to_int("loop", labels) == 4
+    assert debugger._to_int("0x10", labels) == 0x10
+    assert debugger._to_int("$1F", labels) == 0x1F
+    assert debugger._to_int("L_0ABC", labels) == 0x0ABC
+    assert debugger._to_int("12", labels) == 12
+
+
+def test_invalid_argument_reports_error_without_crashing():
+    dbg, logs = build(COUNT)
+    assert dbg.handle("break") is True
+    assert any("usage" in line for line in logs)
+    dbg.handle("delete 0x04")       # removing a non-existent breakpoint is fine
+    assert dbg.breakpoints == set()
+
+
+if __name__ == "__main__":
+    raise SystemExit(pytest.main([__file__, "-q"]))

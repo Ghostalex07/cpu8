@@ -90,6 +90,11 @@ make regress-update
    make regress
    ```
 
+   While developing you can step the program instruction by instruction with the
+   interactive debugger: `make debug PROG=programs/<name>` (or
+   `python3 tools/debugger.py programs/<name>.asm`). It offers breakpoints,
+   watchpoints, memory/disassembly dumps and a cycle count.
+
 ## Adding or changing instructions
 
 The **single source of truth for the ISA** is `cpu8/asm/isa_table.py`. If you

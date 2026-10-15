@@ -22,6 +22,11 @@ The project does not publish numbered releases yet, so changes are grouped under
   `DIV`/`MUL`), `factorial.asm` (iterative factorial with `MUL`), `primes.asm`
   (primes by trial division) and `sort.asm` (*bubble sort* with the `.db`
   directive), with their `.ref` files and golden traces.
+- **Interactive debugger** (`cpu8/tools/debugger.py`): steps a program on the
+  reference model with `gdb`-like commands (breakpoints, watchpoints, register and
+  memory dumps, on-the-fly disassembly) and a cycle count that models the FSM of
+  `rtl/control.v`. Available as `make debug PROG=programs/<name>`; tested by
+  `cpu8/tools/test_debugger.py`.
 - **Quality tooling**: `ruff` configuration (`cpu8/ruff.toml`) and the `make lint`,
   `make docs`, `make docs-check` and `make check` targets.
 - **CI**: Python lint (ruff) and a check that the opcode documentation is up to
@@ -31,7 +36,7 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Changed
 
-- `make pytools` now includes the ISA table tests.
+- `make pytools` now includes the ISA table tests and the debugger tests.
 
 ### Fixed
 
