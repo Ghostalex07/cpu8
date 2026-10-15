@@ -27,8 +27,11 @@ _SIN_OPERANDO = ("EI", "DI", "RET", "HLT")
 def _longitud(linea: str) -> int:
     """Bytes that the line will occupy (same rule as the assembler)."""
     mnem = linea.split()[0].upper()
+    if mnem in ("LDW", "STW"):
+        return 3
     if mnem in ("LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL",
-                "MUL", "DIV") or mnem in _SALTOS:
+                "MUL", "DIV", "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG",
+                "ROL", "ROR") or mnem in _SALTOS:
         return 2
     if mnem in ("OUT", "IN"):
         return 2 if "," in linea[3:] else 1
@@ -57,7 +60,7 @@ def generar_fuente(rng: random.Random, n: int) -> str:
 def _linea_aleatoria(rng: random.Random) -> str:
     r, s = rng.choice(REGISTROS), rng.choice(REGISTROS)
     imm = rng.randrange(256)
-    k = rng.randrange(13)
+    k = rng.randrange(16)
 
     if k == 0:
         return f"{rng.choice(('INC', 'DEC'))} {r}"
@@ -96,5 +99,16 @@ def _linea_aleatoria(rng: random.Random) -> str:
         return f"{rng.choice(_SIN_OPERANDO)}"
     if k == 11:
         return f"{rng.choice(_SALTOS)} {{T}}"   # target resolved in 2nd pass
+    if k == 12:
+        # Extended unary (prefix 0xFA): NEG / NOT / ROL / ROR.
+        return f"{rng.choice(('NEG', 'NOT', 'ROL', 'ROR'))} {r}"
+    if k == 13:
+        # Extended binary: ADC / SBC / SWAP (alias XCHG).
+        return f"{rng.choice(('ADC', 'SBC', 'SWAP', 'XCHG'))} {r}, {s}"
+    if k == 14:
+        # Extended indexed (3 bytes): LDW / STW rd, [rs+off] (any base A-D).
+        base = rng.choice(REGISTROS)
+        off = rng.randrange(-128, 128)
+        return f"{rng.choice(('LDW', 'STW'))} {r}, [{base}{off:+d}]"
     # NOP (encoded as MOV A, A) for variety.
     return "NOP"

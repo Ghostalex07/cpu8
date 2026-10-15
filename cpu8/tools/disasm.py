@@ -33,6 +33,16 @@ _JCC = (
     ("JVS", "JVC", "JMI", "JPL"),    # family 10: status
     ("JVS", "JVC", "JMI", "JPL"),    # family 11: reserved (same as 10)
 )
+# Extended (prefixed, 0xFA) sub-operations: byte2 = (xop<<4)|(rd<<2)|rs.
+_XOP_NEG = 0x0
+_XOP_NOT = 0x1
+_XOP_ADC = 0x2
+_XOP_SBC = 0x3
+_XOP_SWAP = 0x4
+_XOP_ROL = 0x5
+_XOP_ROR = 0x6
+_XOP_LDW = 0x7
+_XOP_STW = 0x8
 _RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
 
 
@@ -56,6 +66,35 @@ def leer_fuente(path: Path) -> list[int]:
 def _offset(n: int) -> str:
     """Signed indexed displacement for readability (two's complement if n > 127)."""
     return f"{n - 256:+d}" if n > 127 else f"{n:+d}"
+
+
+def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
+    """Decodes a prefixed (0xFA) extended instruction at ``mem[i]``.
+
+    Returns ``(text, length)``; ``length`` is 3 for LDW/STW and 2 otherwise.
+    """
+    xb = mem[i + 1] if i + 1 < len(mem) else 0
+    xop, rd, rs = xb >> 4, (xb >> 2) & 3, xb & 3
+    off = mem[i + 2] if i + 2 < len(mem) else 0
+    if xop == _XOP_NEG:
+        return f"NEG {REGS[rd]}", 2
+    if xop == _XOP_NOT:
+        return f"NOT {REGS[rd]}", 2
+    if xop == _XOP_ADC:
+        return f"ADC {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_SBC:
+        return f"SBC {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_SWAP:
+        return f"SWAP {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_ROL:
+        return f"ROL {REGS[rd]}", 2
+    if xop == _XOP_ROR:
+        return f"ROR {REGS[rd]}", 2
+    if xop == _XOP_LDW:
+        return f"LDW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
+    if xop == _XOP_STW:
+        return f"STW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
+    return f"; reserved 0xFA 0x{xb:02X}", 2
 
 
 def decodificar(mem: list[int], i: int) -> tuple[str, int]:
@@ -110,6 +149,8 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
         if b in (0xF8, 0xF9):
             m = "OUT" if b == 0xF8 else "IN"
             return f"{m} {sig & 3}, {REGS[(sig >> 2) & 3]}", 2
+        if b == 0xFA:                       # extended (prefixed) instruction
+            return _decodificar_ext(mem, i)
         return f"; reserved 0x{b:02X}", 1
     return f"; reserved 0x{b:02X}", 1  # unreachable (op is 0..F)
 

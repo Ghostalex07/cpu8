@@ -118,17 +118,36 @@ OP_DIV: Final = 0xF7   # DIV rd,rs
 OP_OUTP: Final = 0xF8  # OUT n, rd
 OP_INP: Final = 0xF9   # IN  n, rd
 
+# --- Extended (prefixed) instructions (Phase 12, docs/ISA.md §10) ------------
+# byte1 = 0xFA; byte2 = (xop << 4) | (rd << 2) | rs, where `xop` is the extended
+# sub-operation.  Only LDW/STW carry a third byte (the displacement).
+OP_EXT: Final = 0xFA
+XOP_NEG: Final = 0x0    # NEG  rd          (1 register)
+XOP_NOT: Final = 0x1    # NOT  rd          (1 register)
+XOP_ADC: Final = 0x2    # ADC  rd, rs
+XOP_SBC: Final = 0x3    # SBC  rd, rs
+XOP_SWAP: Final = 0x4   # SWAP rd, rs (alias XCHG)
+XOP_ROL: Final = 0x5    # ROL  rd          (1 register)
+XOP_ROR: Final = 0x6    # ROR  rd          (1 register)
+XOP_LDW: Final = 0x7    # LDW  rd, [rs+off]  (3 bytes)
+XOP_STW: Final = 0x8    # STW  rd, [rs+off]  (3 bytes)
+
 # Instructions that take a second byte (immediate or address).
 DOS_BYTES: Final[set[str]] = (
-    {"LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL", "MUL", "DIV"}
+    {"LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL", "MUL", "DIV",
+     "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG", "ROL", "ROR"}
     | set(CONDICIONES)
 )
+
+# Prefixed instructions that also take a third byte (indexed displacement).
+TRES_BYTES: Final[set[str]] = {"LDW", "STW"}
 
 # All valid mnemonics.
 MNEMONICOS: Final[set[str]] = (
     {"NOP", "LDI", "ADDI", "SUBI", "CMPI", "MOV", "LD", "ST", "SHL", "SHR",
      "JMP", "CALL", "OUT", "HLT", "INC", "DEC", "PUSH", "POP", "RET", "EI", "DI",
-     "MUL", "DIV", "IN"}
+     "MUL", "DIV", "IN",
+     "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG", "ROL", "ROR", "LDW", "STW"}
     | set(OPCODE_ALU) | set(CONDICIONES)
 )
 
@@ -244,6 +263,8 @@ def tamano_instruccion(mnem: str, operandos: Sequence[str] = ()) -> int:
     Most have a fixed size; ``OUT``/``IN`` take 1 byte in their register form
     and 2 in the ported form ``OUT n, rd`` / ``IN n, rd``.
     """
+    if mnem in TRES_BYTES:
+        return 3
     if mnem in ("OUT", "IN"):
         return 2 if len(operandos) == 2 else 1
     return 2 if mnem in DOS_BYTES else 1
@@ -387,6 +408,50 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
         rd = indice_registro(operandos[0], num_linea)
         rs = indice_registro(operandos[1], num_linea)
         return [OP_MUL if mnem == "MUL" else OP_DIV, (rd << 2) | rs]
+
+    if mnem in ("NEG", "NOT", "ROL", "ROR"):
+        # Extended unary (2 bytes): 0xFA, (xop<<4)|(rd<<2).
+        exigir_operandos(num_linea, mnem, operandos, 1)
+        rd = indice_registro(operandos[0], num_linea)
+        xop = {"NEG": XOP_NEG, "NOT": XOP_NOT,
+               "ROL": XOP_ROL, "ROR": XOP_ROR}[mnem]
+        return [OP_EXT, (xop << 4) | (rd << 2)]
+
+    if mnem in ("ADC", "SBC", "SWAP", "XCHG"):
+        # Extended binary (2 bytes): 0xFA, (xop<<4)|(rd<<2)|rs.
+        exigir_operandos(num_linea, mnem, operandos, 2)
+        rd = indice_registro(operandos[0], num_linea)
+        rs = indice_registro(operandos[1], num_linea)
+        xop = {"ADC": XOP_ADC, "SBC": XOP_SBC,
+               "SWAP": XOP_SWAP, "XCHG": XOP_SWAP}[mnem]
+        return [OP_EXT, (xop << 4) | (rd << 2) | rs]
+
+    if mnem in ("LDW", "STW"):
+        # Extended indexed (3 bytes): 0xFA, (xop<<4)|(rd<<2)|rs, off.
+        # EA = rs + off (9 bits): RAM[EA[7:0]] and C <- EA[8] (16-bit pointer,
+        # docs/ISA.md §10).  The base can be any register A-D.
+        exigir_operandos(num_linea, mnem, operandos, 2)
+        rd = indice_registro(operandos[0], num_linea)
+        op2 = operandos[1]
+        m_idx = _RE_INDEXADO.fullmatch(op2)
+        if m_idx and m_idx.group(1) not in etiquetas:
+            rs = indice_registro(m_idx.group(1), num_linea)
+            expr = (m_idx.group(3) or "").strip()
+            if not expr:
+                raise AssemblerError(num_linea,
+                                     "missing indexed displacement")
+            off = resolver_valor(resolver, expr, num_linea)
+            if m_idx.group(2) == "-":
+                off = (-off) & 0xFF          # negative displacement
+        elif not m_idx and _RE_IDENTIFICADOR.fullmatch(op2) \
+                and op2 not in etiquetas:
+            rs = indice_registro(op2, num_linea)  # plain [rs]: off = 0
+            off = 0
+        else:
+            raise AssemblerError(
+                num_linea, f"{mnem} expects [rs+off] (base A, B, C or D)")
+        xop = XOP_LDW if mnem == "LDW" else XOP_STW
+        return [OP_EXT, (xop << 4) | (rd << 2) | rs, off]
 
     if mnem in ("OUT", "IN"):
         # Register form (1 byte): OUT rd = 0xE0|(rd<<2); IN rd = the same |01.

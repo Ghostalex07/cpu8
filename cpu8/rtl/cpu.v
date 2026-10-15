@@ -44,6 +44,7 @@ module cpu #(
     // ------------------------------------------------------------------
     reg [7:0] IR;        // current instruction
     reg [7:0] operand;   // second byte (immediate or address)
+    reg [7:0] xop;       // second byte of a prefixed (0xFA) instruction
     reg       flag_z;    // Z (zero)
     reg       flag_c;    // C (carry / no-borrow)
     reg       flag_n;    // N (negative)
@@ -62,6 +63,7 @@ module cpu #(
     wire       sel_a_rs, sel_one, flags_c_we;
     wire       sp_inc, sp_dec, sp_as_addr, sel_ram_rs, pc_from_mem;
     wire       sel_ram_pc, ind, idx;
+    wire       ext, xop_ld, rf_we2, addr_alu;
     wire       pc_from_vec, flag_i_set, flag_i_clear;
     wire       sel_in, io_op;
 
@@ -83,7 +85,7 @@ module cpu #(
     //  Control unit
     // ------------------------------------------------------------------
     control u_ctrl (
-        .clk(clk), .rst(rst), .instr(instr), .fetched(ram_rdata),
+        .clk(clk), .rst(rst), .instr(instr), .fetched(ram_rdata), .xsub(xop[7:4]),
         .flag_z(flag_z), .flag_c(flag_c), .flag_n(flag_n),
         .flag_v(flag_v), .flag_i(flag_i), .irq(irq),
         .ir_ld(ir_ld), .opr_ld(opr_ld), .pc_as_addr(pc_as_addr),
@@ -96,6 +98,7 @@ module cpu #(
         .sp_inc(sp_inc), .sp_dec(sp_dec), .sp_as_addr(sp_as_addr),
         .sel_ram_rs(sel_ram_rs), .pc_from_mem(pc_from_mem),
         .sel_ram_pc(sel_ram_pc), .ind(ind), .idx(idx),
+        .ext(ext), .xop_ld(xop_ld), .rf_we2(rf_we2), .addr_alu(addr_alu),
         .pc_from_vec(pc_from_vec), .flag_i_set(flag_i_set),
         .flag_i_clear(flag_i_clear),
         .sel_in(sel_in), .io_op(io_op),
@@ -110,7 +113,7 @@ module cpu #(
                    sel_imm  ? operand : rf_rdata_rs;
 
     alu u_alu (
-        .op(alu_op), .sh(alu_sh), .a(alu_a), .b(alu_b),
+        .op(alu_op), .sh(alu_sh), .a(alu_a), .b(alu_b), .cin(flag_c),
         .y(alu_y), .c(alu_c), .v(alu_v), .z(alu_z), .n(alu_n)
     );
 
@@ -134,7 +137,8 @@ module cpu #(
     // ------------------------------------------------------------------
     wire [7:0] sp_addr = sp_inc ? (SP + 8'd1) : SP;  // POP/RET read SP+1
 
-    assign ram_addr  = ind ? rf_rdata_rs
+    assign ram_addr  = addr_alu ? alu_y
+                     : ind ? rf_rdata_rs
                      : idx ? (rf_rdata_rs + operand)
                      : (pc_as_addr ? pc_q : (sp_as_addr ? sp_addr : operand));
     assign ram_wdata = sel_ram_rs ? rf_rdata_rs
@@ -145,14 +149,16 @@ module cpu #(
     );
 
     // ------------------------------------------------------------------
-    //  Register file.  In indirect mode the indices come from the 2nd byte.
+    //  Register file.  In indirect mode the indices come from the 2nd byte;
+    //  in prefixed (ext) mode they come from `xop` (rd = xop[3:2], rs = xop[1:0]).
     // ------------------------------------------------------------------
-    wire [1:0] rf_raddr1 = ind ? operand[3:2] : instr[3:2];
-    wire [1:0] rf_raddr2 = ind ? operand[1:0] : instr[1:0];
-    wire [1:0] rf_waddr_m = ind ? operand[3:2] : rf_waddr;
+    wire [1:0] rf_raddr1 = ext ? xop[3:2] : ind ? operand[3:2] : instr[3:2];
+    wire [1:0] rf_raddr2 = ext ? xop[1:0] : ind ? operand[1:0] : instr[1:0];
+    wire [1:0] rf_waddr_m = ext ? xop[3:2] : ind ? operand[3:2] : rf_waddr;
 
     regfile u_rf (
         .clk(clk), .rst(rst), .we(rf_we), .waddr(rf_waddr_m), .wdata(rf_wdata),
+        .we2(rf_we2), .waddr2(xop[1:0]), .wdata2(rf_rdata_rd),
         .raddr1(rf_raddr1), .rdata1(rf_rdata_rd),
         .raddr2(rf_raddr2), .rdata2(rf_rdata_rs)
     );
@@ -174,6 +180,7 @@ module cpu #(
         if (rst) begin
             IR       <= 8'h00;
             operand  <= 8'h00;
+            xop      <= 8'h00;
             flag_z   <= 1'b0;
             flag_c   <= 1'b0;
             flag_n   <= 1'b0;
@@ -190,6 +197,7 @@ module cpu #(
         end else begin
             if (ir_ld)    IR      <= ram_rdata;
             if (opr_ld)   operand <= ram_rdata;
+            if (xop_ld)   xop     <= ram_rdata;
             if (flags_we) begin
                 flag_z <= alu_z;
                 flag_n <= alu_n;

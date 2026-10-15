@@ -124,7 +124,7 @@ The flags appearing in the *Flags* column are those that the instruction **modif
 | `OUT` | `0xE0` — `(0xE<<4) + (rd<<2) + 00` | 1 | rd | — | Write port 0: port0 <- rd. |
 | `IN` | `0xED` — `(0xE<<4) + (rd<<2) + 01` | 1 | rd | — | Read port 0: rd <- port0. |
 
-## Page `0xF` — System/memory group (HLT, RET, EI, DI, indirect, MUL/DIV, ported I/O)
+## Page `0xF` — System/memory group (HLT, RET, EI, DI, indirect, MUL/DIV, ported I/O, 0xFA prefix)
 
 | Mnemonic | Encoding (hex) | Bytes | Operands | Flags | Description |
 |----------|----------------|-------|----------|-------|-------------|
@@ -138,3 +138,13 @@ The flags appearing in the *Flags* column are those that the instruction **modif
 | `DIV` | `0xF7 0x0E` — `0xF7 ; byte2 = (rd<<2) + rs` | 2 | rd, rs | Z C N V | rd <- rd / rs (unsigned integer division); C=1 if rs=0 (V=0). |
 | `OUT` | `0xF8 0x06` — `0xF8 ; byte2 = (rd<<2) + n` | 2 | n, rd | — | Write port n (0..3): port n <- rd. |
 | `IN` | `0xF9 0x0F` — `0xF9 ; byte2 = (rd<<2) + n` | 2 | n, rd | — | Read port n (0..3): rd <- port n. |
+| `NEG` | `0xFA 0x00` — `0xFA ; byte2 = (0x0<<4) + (rd<<2)` | 2 | rd | Z C N V | Negate rd: rd <- 0 - rd (Z, C, N, V). |
+| `NOT` | `0xFA 0x18` — `0xFA ; byte2 = (0x1<<4) + (rd<<2)` | 2 | rd | Z C N V | Bitwise NOT rd: rd <- ~rd (Z, N; C=0, V=0). |
+| `ADC` | `0xFA 0x21` — `0xFA ; byte2 = (0x2<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Add with carry: rd <- rd + rs + C (Z, C, N, V). |
+| `SBC` | `0xFA 0x36` — `0xFA ; byte2 = (0x3<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Subtract with borrow: rd <- rd - rs - C (Z, C, N, V). |
+| `SWAP` | `0xFA 0x42` — `0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs` | 2 | rd, rs | — | Exchange two registers: rd <-> rs (does not change flags). |
+| `XCHG` (alias of `SWAP`) | `0xFA 0x42` — `0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs (alias of SWAP)` | 2 | rd, rs | — | Alias of SWAP: exchange two registers (rd <-> rs). |
+| `ROL` | `0xFA 0x5C` — `0xFA ; byte2 = (0x5<<4) + (rd<<2)` | 2 | rd | Z C N V | Rotate left through C: rd <- {rd[6:0], C}; C <- rd[7]. |
+| `ROR` | `0xFA 0x60` — `0xFA ; byte2 = (0x6<<4) + (rd<<2)` | 2 | rd | Z C N V | Rotate right through C: rd <- {C, rd[7:1]}; C <- rd[0]. |
+| `LDW` | `0xFA 0x71 0x03` — `0xFA ; byte2 = (0x7<<4) + (rd<<2) + rs ; byte3 = off` | 3 | rd, [rs+off] | C | Wide indexed load: EA = rs + off (9 bits); rd <- RAM[EA[7:0]]; C <- EA[8] (16-bit pointer). |
+| `STW` | `0xFA 0x8B 0x04` — `0xFA ; byte2 = (0x8<<4) + (rd<<2) + rs ; byte3 = off` | 3 | rd, [rs+off] | C | Wide indexed store: EA = rs + off (9 bits); RAM[EA[7:0]] <- rd; C <- EA[8] (16-bit pointer). |

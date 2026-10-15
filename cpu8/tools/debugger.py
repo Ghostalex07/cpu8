@@ -42,8 +42,8 @@ _REG_ATTRS = {
     "A": ("regs", 0), "B": ("regs", 1), "C": ("regs", 2), "D": ("regs", 3),
     "SP": ("SP", None), "PC": ("PC", None), "IR": ("IR", None), "OP": ("operand", None),
 }
-# Mnemonics of the instructions that carry a second byte (for disassembly hints).
-_NEEDS_OPERAND = iss_mod.needs_operand
+# Instruction length in bytes (1/2/3), for the cycle model and hints.
+_LENGTH = iss_mod.instruction_length
 
 
 def load_program(path: Path) -> tuple[list[int], dict[str, int]]:
@@ -117,7 +117,9 @@ class Debugger:
             return False
 
     def _cycles(self) -> int:
-        return 3 if _NEEDS_OPERAND(self.iss.mem[self.iss.PC]) else 2
+        # Cycles model control.v's FSM: one byte = 2 cycles (FETCH+EXEC) and
+        # each additional fetched byte adds one (S_OPR, S_OPR2).
+        return _LENGTH(self.iss.mem, self.iss.PC) + 1
 
     def _step_one(self) -> None:
         """Executes exactly one instruction (and one interrupt cycle if pending)."""

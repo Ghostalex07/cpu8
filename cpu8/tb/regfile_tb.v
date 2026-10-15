@@ -17,14 +17,16 @@ module regfile_tb;
 
     reg clk = 0;
     reg rst = 0, we = 0;
-    reg [1:0] waddr = 0, raddr1 = 0, raddr2 = 0;
-    reg [7:0] wdata = 0;
+    reg we2 = 0;
+    reg [1:0] waddr = 0, waddr2 = 0, raddr1 = 0, raddr2 = 0;
+    reg [7:0] wdata = 0, wdata2 = 0;
     wire [7:0] rdata1, rdata2;
 
     integer errors = 0;
 
     regfile dut (
         .clk(clk), .rst(rst), .we(we), .waddr(waddr), .wdata(wdata),
+        .we2(we2), .waddr2(waddr2), .wdata2(wdata2),
         .raddr1(raddr1), .raddr2(raddr2), .rdata1(rdata1), .rdata2(rdata2)
     );
 
@@ -103,7 +105,16 @@ module regfile_tb;
         @(posedge clk); #1; we = 0;
         chk2(2'd0, 8'h99);
 
-        // 6) Second reset.
+        // 6) The two write ports at once (SWAP rd,rs): exchange A and B in one
+        //    cycle, each port taking the OLD value of the other register.
+        wr(2'd0, 8'h11);
+        wr(2'd1, 8'h22);
+        we = 1; waddr  = 2'd0; wdata  = 8'h22;   // A <- old B
+        we2 = 1; waddr2 = 2'd1; wdata2 = 8'h11;  // B <- old A
+        @(posedge clk); #1; we = 0; we2 = 0;
+        chk1(2'd0, 8'h22); chk1(2'd1, 8'h11);
+
+        // 7) Second reset.
         do_reset;
         chk1(2'd0, 8'h00); chk1(2'd3, 8'h00);
 

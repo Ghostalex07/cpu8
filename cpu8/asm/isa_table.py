@@ -32,7 +32,12 @@ The general encoding of the first byte is ``(opcode<<4) | (rd<<2) | rs``
 
 * ``pagina``: opcode nibble ``[7:4]`` (0x0..0xF);
 * ``bajo``: low nibble of the 4-bit page (``rd``/``rs``/sub-code);
-* ``byte2``: second byte (immediate/address/indices) or ``None`` if it is 1 byte.
+* ``byte2``: second byte (immediate/address/indices) or ``None`` if it is 1 byte;
+* ``byte3``: third byte (only for the prefixed LDW/STW) or ``None``.
+
+The extended (prefixed) instructions (``docs/ISA.md`` §10) encode ``byte1 = 0xFA``
+(``pagina`` 0xF, ``bajo`` 0xA) and ``byte2 = (xop << 4) | (rd << 2) | rs``, where
+``xop`` is the extended sub-operation.
 """
 
 from __future__ import annotations
@@ -61,10 +66,13 @@ class Instruccion:
     muestra: str            # example source (one line) that assembles this form
     desensamblado: str      # exact text produced by tools/disasm.decodificar
     alias_de: str | None = None  # canonical mnemonic if it is an alias
+    byte3: int | None = None     # exact 3rd byte (prefixed LDW/STW), else None
 
     @property
     def longitud(self) -> int:
-        """Bytes the instruction takes (1 or 2)."""
+        """Bytes the instruction takes (1, 2 or 3)."""
+        if self.byte3 is not None:
+            return 3
         return 2 if self.byte2 is not None else 1
 
     def bytes_codificados(self) -> tuple[int, ...]:
@@ -72,7 +80,9 @@ class Instruccion:
         b1 = (self.pagina << 4) | self.bajo
         if self.byte2 is None:
             return (b1,)
-        return (b1, self.byte2)
+        if self.byte3 is None:
+            return (b1, self.byte2)
+        return (b1, self.byte2, self.byte3)
 
     @property
     def byte1(self) -> int:
@@ -97,7 +107,7 @@ PAGINAS: Final[dict[int, str]] = {
     0xC: "JMP / CALL",
     0xD: "Conditional jumps (Jcc)",
     0xE: "OUT / IN — port 0 (register form)",
-    0xF: "System/memory group (HLT, RET, EI, DI, indirect, MUL/DIV, ported I/O)",
+    0xF: "System/memory group (HLT, RET, EI, DI, indirect, MUL/DIV, ported I/O, 0xFA prefix)",
 }
 
 
@@ -477,6 +487,83 @@ INSTRUCCIONES: Final[tuple[Instruccion, ...]] = (
         banderas="—",
         descripcion="Read port n (0..3): rd <- port n.",
         muestra="IN 3, D", desensamblado="IN 3, D",
+    ),
+
+    # ---- Page 0xF, prefix 0xFA: extended instructions (docs/ISA.md §10) -----
+    # byte1 = 0xFA ; byte2 = (xop<<4)+(rd<<2)+rs ; LDW/STW add byte3 = off.
+    Instruccion(
+        mnemonico="NEG", forma="rd", pagina=0xF, bajo=0b1010, byte2=0x00,
+        regla="0xFA ; byte2 = (0x0<<4) + (rd<<2)",
+        banderas="Z C N V",
+        descripcion="Negate rd: rd <- 0 - rd (Z, C, N, V).",
+        muestra="NEG A", desensamblado="NEG A",
+    ),
+    Instruccion(
+        mnemonico="NOT", forma="rd", pagina=0xF, bajo=0b1010, byte2=0x18,
+        regla="0xFA ; byte2 = (0x1<<4) + (rd<<2)",
+        banderas="Z C N V",
+        descripcion="Bitwise NOT rd: rd <- ~rd (Z, N; C=0, V=0).",
+        muestra="NOT C", desensamblado="NOT C",
+    ),
+    Instruccion(
+        mnemonico="ADC", forma="rd, rs", pagina=0xF, bajo=0b1010, byte2=0x21,
+        regla="0xFA ; byte2 = (0x2<<4) + (rd<<2) + rs",
+        banderas="Z C N V",
+        descripcion="Add with carry: rd <- rd + rs + C (Z, C, N, V).",
+        muestra="ADC A, B", desensamblado="ADC A, B",
+    ),
+    Instruccion(
+        mnemonico="SBC", forma="rd, rs", pagina=0xF, bajo=0b1010, byte2=0x36,
+        regla="0xFA ; byte2 = (0x3<<4) + (rd<<2) + rs",
+        banderas="Z C N V",
+        descripcion="Subtract with borrow: rd <- rd - rs - C (Z, C, N, V).",
+        muestra="SBC B, C", desensamblado="SBC B, C",
+    ),
+    Instruccion(
+        mnemonico="SWAP", forma="rd, rs", pagina=0xF, bajo=0b1010, byte2=0x42,
+        regla="0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs",
+        banderas="—",
+        descripcion="Exchange two registers: rd <-> rs (does not change flags).",
+        muestra="SWAP A, C", desensamblado="SWAP A, C",
+    ),
+    Instruccion(
+        mnemonico="XCHG", forma="rd, rs", pagina=0xF, bajo=0b1010, byte2=0x42,
+        regla="0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs (alias of SWAP)",
+        banderas="—",
+        descripcion="Alias of SWAP: exchange two registers (rd <-> rs).",
+        muestra="XCHG A, C", desensamblado="SWAP A, C", alias_de="SWAP",
+    ),
+    Instruccion(
+        mnemonico="ROL", forma="rd", pagina=0xF, bajo=0b1010, byte2=0x5C,
+        regla="0xFA ; byte2 = (0x5<<4) + (rd<<2)",
+        banderas="Z C N V",
+        descripcion="Rotate left through C: rd <- {rd[6:0], C}; C <- rd[7].",
+        muestra="ROL D", desensamblado="ROL D",
+    ),
+    Instruccion(
+        mnemonico="ROR", forma="rd", pagina=0xF, bajo=0b1010, byte2=0x60,
+        regla="0xFA ; byte2 = (0x6<<4) + (rd<<2)",
+        banderas="Z C N V",
+        descripcion="Rotate right through C: rd <- {C, rd[7:1]}; C <- rd[0].",
+        muestra="ROR A", desensamblado="ROR A",
+    ),
+    Instruccion(
+        mnemonico="LDW", forma="rd, [rs+off]", pagina=0xF, bajo=0b1010,
+        byte2=0x71, byte3=0x03,
+        regla="0xFA ; byte2 = (0x7<<4) + (rd<<2) + rs ; byte3 = off",
+        banderas="C",
+        descripcion="Wide indexed load: EA = rs + off (9 bits); rd <- RAM[EA[7:0]]; "
+                    "C <- EA[8] (16-bit pointer).",
+        muestra="LDW A, [B+3]", desensamblado="LDW A, [B+3]",
+    ),
+    Instruccion(
+        mnemonico="STW", forma="rd, [rs+off]", pagina=0xF, bajo=0b1010,
+        byte2=0x8B, byte3=0x04,
+        regla="0xFA ; byte2 = (0x8<<4) + (rd<<2) + rs ; byte3 = off",
+        banderas="C",
+        descripcion="Wide indexed store: EA = rs + off (9 bits); RAM[EA[7:0]] <- rd; "
+                    "C <- EA[8] (16-bit pointer).",
+        muestra="STW C, [D+4]", desensamblado="STW C, [D+4]",
     ),
 )
 

@@ -2,7 +2,9 @@
 //  regfile.v - General-purpose register file (A, B, C, D)
 //
 //  Four 8-bit registers. It has:
-//    - 1 synchronous WRITE port (on the rising edge), with enable `we`.
+//    - 2 synchronous WRITE ports (on the rising edge), with enables `we` and
+//      `we2`.  The second one exists for SWAP rd,rs (extended instruction),
+//      which exchanges two registers in a single cycle.
 //    - 2 combinational READ ports, so that `rd` and `rs` can be read at the
 //      same time (the ALU needs both operands in the same cycle).
 //
@@ -17,9 +19,12 @@
 module regfile (
     input  wire       clk,     // system clock
     input  wire       rst,     // synchronous reset, active high
-    input  wire       we,      // write enable
-    input  wire [1:0] waddr,   // index of the destination register
-    input  wire [7:0] wdata,   // data to write
+    input  wire       we,      // write enable (port 1)
+    input  wire [1:0] waddr,   // index of the destination register (port 1)
+    input  wire [7:0] wdata,   // data to write (port 1)
+    input  wire       we2,     // write enable (port 2, SWAP rd,rs)
+    input  wire [1:0] waddr2,  // index of the destination register (port 2)
+    input  wire [7:0] wdata2,  // data to write (port 2)
     input  wire [1:0] raddr1,  // address of read port 1 (rs)
     input  wire [1:0] raddr2,  // address of read port 2 (rd)
     output wire [7:0] rdata1,  // value of register raddr1
@@ -36,15 +41,18 @@ module regfile (
     reg [7:0] regs [0:3];
 
     // Write and reset, both SYNCHRONOUS (they only change on the rising edge).
-    // The reset has priority over the write.
+    // The reset has priority over the writes.  When SWAP writes two DIFFERENT
+    // registers there is no conflict; with rd==rs both ports write the same
+    // (unchanged) value, which is a harmless no-op.
     always @(posedge clk) begin
         if (rst) begin
             regs[R_A] <= 8'h00;
             regs[R_B] <= 8'h00;
             regs[R_C] <= 8'h00;
             regs[R_D] <= 8'h00;
-        end else if (we) begin
-            regs[waddr] <= wdata;
+        end else begin
+            if (we)  regs[waddr]  <= wdata;
+            if (we2) regs[waddr2] <= wdata2;
         end
     end
 

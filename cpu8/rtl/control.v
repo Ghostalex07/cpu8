@@ -4,7 +4,7 @@
 //  Decodes the current instruction (`instr`) and the flags, and generates all
 //  the control signals of the datapath.  The datapath (cpu.v) decides nothing.
 //
-//  5-state FSM.  The instruction length is decided in FETCH itself from the
+//  6-state FSM.  The instruction length is decided in FETCH itself from the
 //  byte that was just read from RAM (`fetched`), so a separate DECODE state is
 //  not needed: the instruction is already loaded into IR in that same cycle.
 //  No combinational loop is formed because during FETCH `ram_addr` is the PC
@@ -12,9 +12,15 @@
 //  transition, never `ram_addr`:
 //      S_FETCH  -> (flag_i && irq) ? S_IRQ : (needs_operand ? S_OPR : S_EXEC)
 //      S_IRQ    -> S_FETCH             (pushes the PC and jumps to the vector)
-//      S_OPR    -> S_EXEC
+//      S_OPR    -> (prefixed and subop 7/8) ? S_OPR2 : S_EXEC
+//      S_OPR2   -> S_EXEC              (3rd byte of LDW/STW)
 //      S_EXEC   -> (instr == HLT ? S_HLT : S_FETCH)
 //      S_HLT    -> S_HLT
+//
+//  Prefixed instructions (Phase 12, docs/ISA.md §10): byte1 = 0xFA selects an
+//  extended opcode carried in byte2 (`xop`, registered in cpu.v = NEG, NOT,
+//  ADC, SBC, SWAP, ROL, ROR, LDW, STW).  Only LDW/STW read a third byte
+//  (operand) in S_OPR2; the rest are 2 bytes.
 //
 //  Interrupts: if flag I (enabled by EI=0xF2) is 1 and the irq input is 1 at
 //  the beginning of an instruction, it is serviced in S_IRQ: the return PC is
@@ -25,8 +31,9 @@
 //      00 = INC, 01 = DEC, 10 = PUSH, 11 = POP
 //
 //  Opcode group 0xF: HLT=0xF0, RET=0xF1, EI=0xF2, DI=0xF3, indirect LD/ST
-//  (0xF4/0xF5, 2 bytes).  That is why HLT is detected as the exact instruction
-//  0xF0 and not as opcode 0xF.
+//  (0xF4/0xF5, 2 bytes), MUL/DIV (0xF6/0xF7), ported OUT/IN (0xF8/0xF9) and
+//  the prefix 0xFA (extended instruction, 2 or 3 bytes).  That is why HLT is
+//  detected as the exact instruction 0xF0 and not as opcode 0xF.
 //
 //  Opcode 0xC (2 bytes): rs=00 -> JMP, rs=01 -> CALL (stores the return address
 //  on the stack before jumping).
@@ -40,6 +47,7 @@ module control (
     input  wire       rst,         // synchronous reset, active high
     input  wire [7:0] instr,       // current instruction (IR register)
     input  wire [7:0] fetched,     // byte read from RAM[PC] in this FETCH
+    input  wire [3:0] xsub,        // subop of a prefixed (0xFA) instruction (byte2[7:4])
     input  wire       flag_z,
     input  wire       flag_c,
     input  wire       flag_n,      // N (sign): used by the signed jumps
@@ -72,6 +80,10 @@ module control (
     output reg        sel_ram_pc,  // the data written to RAM is PC (CALL)
     output reg        ind,         // indirect addressing LD/ST rd,[rs]
     output reg        idx,         // indexed addressing LD/ST rd,[rs+off]
+    output reg        ext,         // current instruction is a prefixed (0xFA) one
+    output reg        xop_ld,      // xop <= RAM[PC] (2nd byte of a prefixed instr)
+    output reg        rf_we2,      // 2nd register-file write port (SWAP rd,rs)
+    output reg        addr_alu,    // RAM is addressed with the ALU result (LDW/STW)
     output reg        pc_from_vec, // PC <= IRQ_VECTOR (interrupt handling)
     output reg        flag_i_set,  // EI: flag I <= 1
     output reg        flag_i_clear,// DI or interrupt: flag I <= 0
@@ -100,15 +112,24 @@ module control (
                      OP_HLT   = 4'hF;
 
     // ALU operation codes that do NOT match an opcode (used by group 0xF:
-    // 0xF6 MUL, 0xF7 DIV).  They must match alu.v.
-    localparam [3:0] ALU_MUL  = 4'hC,
-                     ALU_DIV  = 4'hD;
+    // 0xF6 MUL, 0xF7 DIV, and by the prefixed 0xFA instructions).  They must
+    // match alu.v.
+    localparam [3:0] ALU_MUL     = 4'hC,
+                     ALU_DIV     = 4'hD,
+                     ALU_NEG     = 4'h0,   // NEG rd   : 0 - rd
+                     ALU_NOT     = 4'h3,   // NOT rd   : ~rd
+                     ALU_ADC_SBC = 4'h4,   // ADC/SBC rd,rs (selected by alu_sh)
+                     ALU_ROT     = 4'hE;   // ROL/ROR rd   (selected by alu_sh)
+
+    // Prefix byte that introduces an extended (Phase 12) instruction.
+    localparam [7:0] EXT = 8'hFA;
 
     localparam [2:0] S_FETCH  = 3'd0,
                      S_OPR    = 3'd1,
                      S_EXEC   = 3'd2,
                      S_IRQ    = 3'd3,
-                     S_HLT    = 3'd4;
+                     S_HLT    = 3'd4,
+                     S_OPR2   = 3'd5;   // 3rd byte of a prefixed instruction
 
     // --- Instruction fields ---
     wire [3:0] opcode = instr[7:4];
@@ -124,7 +145,8 @@ module control (
                          (fop == OP_JCC) ||
                          (fetched == 8'hF4) || (fetched == 8'hF5) ||
                          (fetched == 8'hF6) || (fetched == 8'hF7) ||
-                         (fetched == 8'hF8) || (fetched == 8'hF9); // ported MUL/DIV/OUT/IN
+                         (fetched == 8'hF8) || (fetched == 8'hF9) || // ported MUL/DIV/OUT/IN
+                         (fetched == EXT);                            // prefix (3rd byte in S_OPR2)
 
     // Branch condition for Jcc.  The `rd` field of the Jcc selects the family:
     //   rd=00 -> unsigned (JZ/JNZ/JC/JNC, backward compatible)
@@ -154,6 +176,12 @@ module control (
 
     // HLT is exactly 0xF0: group 0xF includes RET/EI/DI/indirect.
     wire is_hlt = (instr == 8'hF0);
+
+    // --- Prefixed (extended) instructions: byte1 = 0xFA ---
+    // byte2 = (xop << 4) | (rd << 2) | rs.  The full byte is registered as `xop`
+    // in cpu.v; here only the subop nibble (`xsub`) is needed, and cpu.v takes
+    // rd/rs from xop[3:2]/xop[1:0].
+    wire       is_ext = (instr == EXT);
 
     // --- State register ---
     reg [2:0] state, nstate;
@@ -197,6 +225,10 @@ module control (
         flag_i_clear= 1'b0;
         sel_in      = 1'b0;
         io_op       = 1'b0;
+        ext         = 1'b0;
+        xop_ld      = 1'b0;
+        rf_we2      = 1'b0;
+        addr_alu    = 1'b0;
 
         case (state)
 
@@ -228,17 +260,72 @@ module control (
                 nstate       = S_FETCH;
             end
 
-            // ---- Fetch the operand (2-byte instructions) ----
+            // ---- Fetch the operand (2-byte instructions, or the 2nd byte of a
+            //      prefixed instruction, which is the extended opcode) ----
             S_OPR: begin
+                pc_as_addr = 1'b1;
+                pc_inc     = 1'b1;   // PC <= PC + 1
+                if (is_ext) begin
+                    xop_ld = 1'b1;   // xop <= RAM[PC]  (byte2 of the prefix)
+                    // Only LDW/STW (subop 7/8) carry a third byte.  The
+                    // decision is made from `fetched` in this same state, so no
+                    // DECODE state is introduced.
+                    nstate = (fop == 4'h7 || fop == 4'h8) ? S_OPR2 : S_EXEC;
+                end else begin
+                    opr_ld = 1'b1;   // operand <= RAM[PC]
+                    nstate = S_EXEC;
+                end
+            end
+
+            // ---- Fetch the 3rd byte of a prefixed instruction (LDW/STW) ----
+            S_OPR2: begin
                 opr_ld     = 1'b1;   // operand <= RAM[PC]
                 pc_as_addr = 1'b1;
-                pc_inc     = 1'b1;   // PC      <= PC + 1
+                pc_inc     = 1'b1;   // PC <= PC + 1
                 nstate     = S_EXEC;
             end
 
             // ---- Execute ----
             S_EXEC: begin
-                case (opcode)
+                ext = is_ext;
+
+                // --- Extended instructions (prefix 0xFA): decode the subop ---
+                if (is_ext) begin
+                    case (xsub)
+                        // NEG rd  : rd <- 0 - rd
+                        4'h0: begin alu_op=ALU_NEG; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // NOT rd  : rd <- ~rd
+                        4'h1: begin alu_op=ALU_NOT; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // ADC rd,rs : rd <- rd + rs + C
+                        4'h2: begin alu_op=ALU_ADC_SBC; alu_sh=1'b0; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // SBC rd,rs : rd <- rd - rs - C
+                        4'h3: begin alu_op=ALU_ADC_SBC; alu_sh=1'b1; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // SWAP rd,rs : exchange both registers (2nd write port)
+                        4'h4: begin rf_we=1'b1; rf_we2=1'b1; end
+                        // ROL rd : rotate left through C
+                        4'h5: begin alu_op=ALU_ROT; alu_sh=1'b0; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // ROR rd : rotate right through C
+                        4'h6: begin alu_op=ALU_ROT; alu_sh=1'b1; rf_we=1'b1;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // LDW rd,[rs+off] : 16-bit EA = rs + off; rd <- mem[EA[7:0]];
+                        //                   C <- EA[8] (16-bit pointer carry)
+                        4'h7: begin alu_op=OP_ADD; sel_a_rs=1'b1; sel_imm=1'b1;
+                                    addr_alu=1'b1; rf_we=1'b1; sel_mem=1'b1;
+                                    flags_c_we=1'b1; end
+                        // STW rd,[rs+off] : mem[EA[7:0]] <- rd; C <- EA[8]
+                        4'h8: begin alu_op=OP_ADD; sel_a_rs=1'b1; sel_imm=1'b1;
+                                    addr_alu=1'b1; ram_we=1'b1; flags_c_we=1'b1; end
+                        default: ;   // reserved prefix subops: 2-byte no-op
+                    endcase
+                end
+
+                // --- Base ISA ---
+                if (!is_ext) case (opcode)
                     OP_LDI:   begin
                         // Suboperation in `rs`: 00 LDI, 01 ADDI, 10 SUBI, 11 CMPI.
                         // In all of them, the ALU takes the immediate (`operand`) as b.
