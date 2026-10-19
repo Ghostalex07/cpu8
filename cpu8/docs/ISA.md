@@ -350,6 +350,7 @@ make sim  PROG=programs/demo                          # assemble and simulate
 | `.equ NAME, expr`  | Defines a reusable constant (a number or a previous constant).        |
 | `.org expr`        | Sets the current address. If it moves forward, it fills with `00`; moving backwards is an error. |
 | `.db item, ...`    | Emits bytes: numbers, labels or strings `"..."` (ASCII).              |
+| `.dw item, ...`    | Emits 16-bit little-endian words: numbers, labels or constants (2 bytes per item; no strings). |
 
 Example:
 
@@ -375,8 +376,8 @@ accepted; commas inside the quotes do not separate fields.
    and the 2-byte prefixed instructions (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`,
    `XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`); **3 bytes** for `LDW`/`STW`;
    **1 byte** for the rest (`OUT`/`IN` are 1 byte in their register form and 2 in
-   the ported `OUT n, rd`/`IN n, rd`); `.org` sets the PC and `.db` contributes as
-   many bytes as it has items.
+   the ported `OUT n, rd`/`IN n, rd`); `.org` sets the PC, `.db` contributes one byte per
+   item and `.dw` two bytes per item.
 2. *Pass 2*: emits the bytes (`.org` fills with zeros) and resolves references to
    labels and constants (already known, even if defined further down).
 

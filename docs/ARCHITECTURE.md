@@ -142,9 +142,10 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
   `SP` (`make trace PROG=programs/<name>`).
 - **Interactive debugger** (`tools/debugger.py`): steps a `.asm`/`.hex` program on
   the reference model (so it needs no RTL build) with `gdb`-like commands —
-  `step`/`next` (which steps *over* a `CALL`), `continue`, `break`, `watch`
-  (registers, flags or a memory cell), `mem`, `disasm`, `trace`, `out`, `reset`,
-  `labels`. It also reports cycles: it models the 7-state FSM of `rtl/control.v`
+  `step`/`next` (which steps *over* a `CALL`), `continue`, `break` (address or
+  label), `watch` (registers, flags or a memory cell), `mem`, `disasm`, `trace`,
+  `out`, `reset`, `labels`; printed addresses carry their `.asm` symbol. It also
+  reports cycles: it models the 7-state FSM of `rtl/control.v`
   (`FETCH + EXEC` = 2 cycles for 1-byte instructions, `FETCH + OPR + EXEC` = 3 for
   2-byte ones, `FETCH + OPR + OPR2 + EXEC` = 4 for the 3-byte `LDW`/`STW`,
   `FETCH + OPR + EXEC + EXEC2` = 4 for the pair ops `ADCW`/`SUBW`, and

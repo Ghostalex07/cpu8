@@ -24,6 +24,14 @@ The project does not publish numbered releases yet, so changes are grouped under
   state instead of always in `EXEC`, which captured 2-cycle pair operations
   mid-instruction. New demo `programs/extensions4.asm` (25 outputs) with golden
   trace; all existing `.hex` files remain byte-identical.
+- **`.dw` directive** in the two-pass assembler: emits 16-bit little-endian
+  words (numbers, labels or constants, two bytes per item; strings are
+  rejected). Both passes, the 16-bit range checks and new tests in
+  `cpu8/asm/test_assembler.py` cover it.
+- **Debugger symbols** (`cpu8/tools/debugger.py`): every printed address is
+  annotated with its `.asm` label (breakpoint confirmations, `bl`, the `PC=` in
+  `regs` and the `trace` rows); `break <label>`, `disasm <label>` and
+  `watch @label` already resolved symbols.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).

@@ -34,7 +34,7 @@ can run entirely **without hardware**, using `iverilog` and/or `verilator`.
   (`IN`/`OUT`), **interrupts** (`EI`/`DI`) and the **`0xFA`-prefixed extended
   instructions** (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR`, `TEST`,
   `PUSHF`, `POPF`, 16-bit `ADCW`/`SUBW` and `LDW`/`STW`).
-- **Custom two-pass assembler** with `.org`, `.db` and `.equ` directives.
+- **Custom two-pass assembler** with `.org`, `.db`, `.dw` and `.equ` directives.
 - **Verification**: module testbenches, per-program output comparison against a
   golden reference (`.ref`), byte/trace hash regression, assemble→disassemble→
   assemble *round-trip*, and **differential fuzzing** that compares the RTL
@@ -161,8 +161,9 @@ The project relies on several layers of checking, all runnable locally:
   sequence and final RAM). This proves the RTL is *correct*, not merely *stable*.
   The interrupt path is covered too.
 - **Interactive debugger** (`tools/debugger.py`): steps a program on the ISS with
-  breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly, and
-  reports a cycle count that models the `control.v` FSM
+  breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly that
+  shows the `.asm` symbols (labels work as breakpoints and appear next to every
+  address), and reports a cycle count that models the `control.v` FSM
   (`make debug PROG=programs/<name>`).
 - **Golden regression** (`make regress`): hash of the assembled bytes, reference
   traces and assemble→disassemble→assemble *round-trip* of hundreds of random

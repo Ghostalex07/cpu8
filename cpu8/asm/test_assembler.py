@@ -42,6 +42,7 @@ def leer_hex(path: Path) -> list[int]:
 #  Demo program verification (byte-by-byte regression)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("nombre", DEMOS)
 def test_programa_demo_es_byte_identico_al_hex(nombre: str) -> None:
     fuente = (PROGRAMS_DIR / f"{nombre}.asm").read_text()
@@ -52,6 +53,7 @@ def test_programa_demo_es_byte_identico_al_hex(nombre: str) -> None:
 # ---------------------------------------------------------------------------
 #  Basic encoding (docs/ISA.md §3)
 # ---------------------------------------------------------------------------
+
 
 def test_nop_es_mov_a_a() -> None:
     assert asm("NOP") == [0x20]
@@ -107,6 +109,7 @@ def test_aliases_jhs_jlo() -> None:
 #  Direct and indirect LD/ST
 # ---------------------------------------------------------------------------
 
+
 def test_ld_st_directos_con_y_sin_corchetes() -> None:
     assert asm("LD A, [0x20]") == [0x30, 0x20]
     assert asm("LD A, 0x20") == [0x30, 0x20]
@@ -130,7 +133,7 @@ def test_etiqueta_nombrada_como_registro_minuscula_es_directa() -> None:
     # Collision: 'b' is a label (case-sensitive); 'B' would be the register.
     # With 'b:' defined, [b] is a direct access to its address.
     src = "b:\nLDI A, 1\nLD A, [b]"
-    assert asm(src) == [0x10, 0x01, 0x30, 0x00]   # 0x00 = address of 'b'
+    assert asm(src) == [0x10, 0x01, 0x30, 0x00]  # 0x00 = address of 'b'
 
 
 def test_etiqueta_mayuscula_colisiona_y_gana_la_etiqueta() -> None:
@@ -146,6 +149,7 @@ def test_sin_colision_el_registro_manda() -> None:
 # ---------------------------------------------------------------------------
 #  §6 extensions: immediates, indexed and signed jumps
 # ---------------------------------------------------------------------------
+
 
 def test_inmediatos_aldi_subi_cmpi() -> None:
     # Page 0x1 with the sub-operation in the rs field: 00 LDI, 01 ADDI,
@@ -217,6 +221,7 @@ def test_saltos_sin_signo_siguen_igual() -> None:
 #  MUL / DIV (group 0xF, Phase 9)
 # ---------------------------------------------------------------------------
 
+
 def test_mul_div_encoding() -> None:
     # byte1 = 0xF6 (MUL) / 0xF7 (DIV); byte2 = (rd<<2)|rs.
     assert asm("MUL A, B") == [0xF6, 0x01]
@@ -241,6 +246,7 @@ def test_mul_div_exigen_dos_operandos() -> None:
 # ---------------------------------------------------------------------------
 #  Ported IN / OUT (group 0xF, Phase 9)
 # ---------------------------------------------------------------------------
+
 
 def test_out_registro_sigue_igual() -> None:
     # Backward compatibility: OUT rd (1 byte) does not change.
@@ -286,13 +292,23 @@ def test_out_in_numero_de_operandos() -> None:
 #  Numeric literals
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize(
     ("literal", "valor"),
     [
-        ("0", 0x00), ("7", 0x07), ("255", 0xFF), ("007", 0x07),
-        ("$20", 0x20), ("$FF", 0xFF), ("0x20", 0x20), ("0X2A", 0x2A),
-        ("0b1010", 0x0A), ("0B1111", 0x0F),
-        ("-1", 0xFF), ("-128", 0x80), ("+5", 0x05),
+        ("0", 0x00),
+        ("7", 0x07),
+        ("255", 0xFF),
+        ("007", 0x07),
+        ("$20", 0x20),
+        ("$FF", 0xFF),
+        ("0x20", 0x20),
+        ("0X2A", 0x2A),
+        ("0b1010", 0x0A),
+        ("0B1111", 0x0F),
+        ("-1", 0xFF),
+        ("-128", 0x80),
+        ("+5", 0x05),
     ],
 )
 def test_literal_numerico(literal: str, valor: int) -> None:
@@ -315,6 +331,7 @@ def test_literal_no_valido(literal: str) -> None:
 #  Line parsing
 # ---------------------------------------------------------------------------
 
+
 def test_linea_solo_etiqueta_y_comentarios() -> None:
     src = "\n; comment\nfoo:      ; label only\n    HLT\n"
     salida, etiquetas, _ = assembler.ensamblar(src)
@@ -335,7 +352,7 @@ def test_mnemonicos_y_registros_insensibles_a_mayusculas() -> None:
 
 
 def test_etiquetas_son_sensibles_a_mayusculas() -> None:
-    src = "Loop: HLT\nJMP Loop"   # 'Loop' defined, 'Loop' referenced
+    src = "Loop: HLT\nJMP Loop"  # 'Loop' defined, 'Loop' referenced
     assert asm(src) == [0xF0, 0xC0, 0x00]
     with pytest.raises(assembler.AssemblerError, match="undefined"):
         asm("Loop: HLT\nJMP loop")
@@ -344,6 +361,7 @@ def test_etiquetas_son_sensibles_a_mayusculas() -> None:
 # ---------------------------------------------------------------------------
 #  Labels: forward references and errors
 # ---------------------------------------------------------------------------
+
 
 def test_referencia_hacia_adelante() -> None:
     # JMP(2B)@0, NOP(1B)@2, fin@3.
@@ -361,8 +379,7 @@ def test_etiqueta_no_definida_linea_correcta() -> None:
 
 
 def test_registro_invalido_linea_correcta() -> None:
-    with pytest.raises(assembler.AssemblerError,
-                       match=r"line 2: unknown register 'X'"):
+    with pytest.raises(assembler.AssemblerError, match=r"line 2: unknown register 'X'"):
         asm("\nMOV A, X")
 
 
@@ -378,6 +395,7 @@ def test_numero_de_operandos_incorrecto() -> None:
 # ---------------------------------------------------------------------------
 #  Directives (.org, .db, .equ)
 # ---------------------------------------------------------------------------
+
 
 def test_equ_constante_reutilizable() -> None:
     assert asm(".equ SIZE, 5\nLDI A, SIZE\nHLT") == [0x10, 0x05, 0xF0]
@@ -400,8 +418,7 @@ def test_org_rellena_con_ceros() -> None:
 
 def test_org_etiqueta_siguiente() -> None:
     # The label after .org takes the fixed address.
-    assert asm(".org 0x08\nfin:\nHLT\nJMP fin") == (
-        [0x00] * 8 + [0xF0, 0xC0, 0x08])
+    assert asm(".org 0x08\nfin:\nHLT\nJMP fin") == ([0x00] * 8 + [0xF0, 0xC0, 0x08])
 
 
 def test_org_retrocede_es_error() -> None:
@@ -411,7 +428,8 @@ def test_org_retrocede_es_error() -> None:
 
 def test_db_numeros_y_bases() -> None:
     assert asm(".db 1, 2, 0xFF, 0b1010, $20, -1\nHLT") == (
-        [0x01, 0x02, 0xFF, 0x0A, 0x20, 0xFF, 0xF0])
+        [0x01, 0x02, 0xFF, 0x0A, 0x20, 0xFF, 0xF0]
+    )
 
 
 def test_db_cadena_ascii_con_escapes() -> None:
@@ -433,6 +451,33 @@ def test_db_con_etiqueta_en_la_misma_linea() -> None:
     assert asm("tab: .db 7, 8\nLD A, [tab]") == [0x07, 0x08, 0x30, 0x00]
 
 
+def test_dw_emite_palabras_en_little_endian() -> None:
+    assert asm(".dw 0x1234, 0xABCD\nHLT") == [0x34, 0x12, 0xCD, 0xAB, 0xF0]
+
+
+def test_dw_cuenta_2_bytes_por_item_en_el_pase_1() -> None:
+    # .dw (2 bytes) at 0, HLT at 2 and label 'tab' at 3.
+    assert asm(".dw 0x1234\nHLT\ntab: .db 0x99") == [0x34, 0x12, 0xF0, 0x99]
+
+
+def test_dw_referencia_hacia_adelante_a_etiqueta() -> None:
+    assert asm(".dw tab\nHLT\ntab: .db 0x99") == [0x03, 0x00, 0xF0, 0x99]
+
+
+def test_dw_negativo_y_constante() -> None:
+    assert asm(".equ K, 7\n.dw -1, K") == [0xFF, 0xFF, 0x07, 0x00]
+
+
+def test_dw_fuera_de_rango_es_error() -> None:
+    with pytest.raises(assembler.AssemblerError, match="0..65535"):
+        asm(".dw 0x10000")
+
+
+def test_dw_no_acepta_cadenas() -> None:
+    with pytest.raises(assembler.AssemblerError, match="strings"):
+        asm('.dw "Hi"')
+
+
 def test_directiva_minuscula_y_mayuscula() -> None:
     assert asm(".equ x, 3\nldi a, x") == [0x10, 0x03]
     assert asm(".DB 9") == [0x09]
@@ -451,6 +496,7 @@ def test_org_fuera_de_rango_es_error() -> None:
 # ---------------------------------------------------------------------------
 #  File edge cases
 # ---------------------------------------------------------------------------
+
 
 def test_bom_utf8_al_inicio() -> None:
     assert asm("\ufeffLDI A, 1\nOUT A") == [0x10, 0x01, 0xE0]
@@ -489,6 +535,7 @@ def test_linea_de_desbordamiento_ignora_comentarios_previos() -> None:
 # ---------------------------------------------------------------------------
 #  Command-line interface
 # ---------------------------------------------------------------------------
+
 
 def test_salida_por_defecto() -> None:
     assert assembler._fichero_salida_por_defecto("a/b/prog.asm") == "a/b/prog.hex"

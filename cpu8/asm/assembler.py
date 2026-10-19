@@ -36,7 +36,9 @@ Source syntax (see ``docs/ISA.md``):
   ``.equ NAME, expr`` defines a constant; ``.org expr`` sets the current
   address (pads with ``00`` if it advances, error if it goes backwards);
   ``.db item, ...`` emits bytes (numbers, labels or strings ``"..."`` with
-  escapes ``\\n``, ``\\t``, ``\\r``, ``\\0``, ``\\\\`` and ``\\"``).
+  escapes ``\\n``, ``\\t``, ``\\r``, ``\\0``, ``\\\\`` and ``\\"``);
+  ``.dw item, ...`` emits 16-bit little-endian words (numbers, labels or
+  constants, two bytes per item, strings not accepted).
 
 It is a **two-pass** assembler: the first pass assigns an address to each label
 (for which it uses the size of each instruction: 2 bytes for
@@ -233,7 +235,7 @@ MNEMONICOS: Final[set[str]] = (
 
 # --- Assembler directives ----------------------------------------------------
 # The mnemonic is normalized to uppercase when the line is parsed.
-DIRECTIVAS: Final[set[str]] = {".ORG", ".DB", ".EQU"}
+DIRECTIVAS: Final[set[str]] = {".ORG", ".DB", ".DW", ".EQU"}
 
 # --- Precompiled regular expressions -----------------------------------------
 _RE_ETIQUETA: Final = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:(.*)$")
@@ -610,7 +612,7 @@ def codificar(
 
 
 # ============================================================================
-#  Directives (.org, .db, .equ)
+#  Directives (.org, .db, .dw, .equ)
 # ============================================================================
 
 # Escapes allowed inside .db strings.
@@ -781,6 +783,20 @@ def ensamblar(
                 linea_overflow = i
             continue
 
+        if mnem == ".DW":
+            campos_w: list[str] = []
+            for campo in _dividir_db(_resto_operandos(texto)):
+                if not campo:
+                    continue
+                if campo.startswith('"'):
+                    raise AssemblerError(i, "strings are not allowed in .dw")
+                campos_w.append(campo)
+            plan.append(("dw", campos_w, i, texto))
+            pc += 2 * len(campos_w)
+            if pc > 256 and linea_overflow is None:
+                linea_overflow = i
+            continue
+
         if mnem not in MNEMONICOS:
             raise AssemblerError(i, f"unknown mnemonic '{mnem}'")
 
@@ -809,6 +825,22 @@ def ensamblar(
         # Negative literals are accepted in two's complement (byte).
         return _comprobar_rango(bruto, 0)
 
+    def resolver_dw(tok: str) -> int:
+        """Like ``resolver`` but with the 16-bit range needed by ``.dw``."""
+        if tok in etiquetas:
+            return etiquetas[tok]
+        if tok in constantes:
+            return constantes[tok]
+        try:
+            bruto = parsear_numero(tok)
+        except ValueError:
+            if _RE_IDENTIFICADOR.fullmatch(tok):
+                raise AssemblerError(0, f"undefined label '{tok}'") from None
+            raise AssemblerError(0, f"invalid value '{tok}'") from None
+        if not (-0x8000 <= bruto <= 0xFFFF):
+            raise AssemblerError(0, f"value {bruto} out of range 0..65535 (or -32768..-1)")
+        return bruto & 0xFFFF
+
     salida: list[int] = []
     listado: list[tuple[int, list[int], str]] = []
     for entrada in plan:
@@ -828,6 +860,16 @@ def ensamblar(
             dir_ = len(salida)
             salida.extend(bs)
             listado.append((dir_, bs, texto))
+        elif entrada[0] == "dw":
+            _dw_campos, _linea, texto_dw = entrada[1], entrada[2], entrada[3]
+            bs_w: list[int] = []
+            for campo in _dw_campos:  # type: ignore[union-attr]
+                v = resolver_valor(resolver_dw, campo, _linea)  # type: ignore[arg-type]
+                bs_w.append(v & 0xFF)
+                bs_w.append(v >> 8)
+            dir_dw = len(salida)
+            salida.extend(bs_w)
+            listado.append((dir_dw, bs_w, texto_dw))
         else:
             st = entrada[1]
             bs = codificar(st.linea, st.mnem, st.ops, resolver, etiquetas)

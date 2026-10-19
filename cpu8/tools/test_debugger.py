@@ -62,11 +62,11 @@ def test_load_asm_has_labels_and_hex_does_not():
 # ---- execution and cycles --------------------------------------------------
 def test_step_advances_and_counts_cycles():
     dbg, _ = build(COUNT)
-    dbg.step()                      # LDI A (2 bytes -> 3 cycles)
+    dbg.step()  # LDI A (2 bytes -> 3 cycles)
     assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (2, 3, 1)
-    dbg.step()                      # LDI B (2 bytes -> 3 cycles)
+    dbg.step()  # LDI B (2 bytes -> 3 cycles)
     assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (4, 6, 2)
-    dbg.step()                      # OUT A (1 byte -> 2 cycles)
+    dbg.step()  # OUT A (1 byte -> 2 cycles)
     assert (dbg.iss.PC, dbg.cycles, dbg.retired) == (5, 8, 3)
     assert dbg.iss.outs == [(3, 0)]
 
@@ -109,14 +109,34 @@ def test_clear_removes_breakpoints():
     assert dbg.breakpoints == set()
 
 
+def test_simbolos_junto_a_las_direcciones():
+    dbg, logs = build(COUNT)
+    dbg.handle("break loop")
+    assert any("0x04 (loop)" in line for line in logs)
+    dbg.handle("bl")
+    assert any("0x04 (loop)" in line for line in logs)
+    dbg.run()
+    assert dbg.hit_break == 0x04
+    assert any("(loop)" in line for line in logs)
+
+
+def test_state_y_trace_muestran_el_simbolo_de_pc():
+    dbg, logs = build(COUNT)
+    dbg.step(2)  # PC = 0x04 (loop)
+    assert "PC=0x04 (loop)" in dbg.state()
+    dbg.step()  # executes OUT A at `loop` -> trace row PC=04
+    dbg.handle("trace")
+    assert any("PC=04 (loop)" in line for line in logs)
+
+
 # ---- watchpoints -----------------------------------------------------------
 def test_watch_reports_register_change():
     dbg, logs = build(COUNT)
     dbg.handle("watch A")
-    dbg.step()                      # LDI A, 3
-    dbg.step()                      # LDI B, 1
-    dbg.step()                      # OUT A
-    dbg.step()                      # SUB A, B -> A changes 3 -> 2
+    dbg.step()  # LDI A, 3
+    dbg.step()  # LDI B, 1
+    dbg.step()  # OUT A
+    dbg.step()  # SUB A, B -> A changes 3 -> 2
     assert any("watch: A 03 -> 02" in line for line in logs)
 
 
@@ -141,23 +161,23 @@ def test_unwatch_and_unknown_target():
 def test_next_steps_over_call():
     src = "LDI A, 1\nCALL sub\nOUT A\nHLT\nsub: ADD A, A\nRET\n"
     dbg, _ = build(src)
-    dbg.step()                      # LDI
+    dbg.step()  # LDI
     assert dbg.iss.PC == 2
-    dbg.next()                      # steps over CALL, runs the subroutine
+    dbg.next()  # steps over CALL, runs the subroutine
     assert dbg.iss.PC == 4
-    assert dbg.iss.regs[0] == 2     # 1 + 1 inside `sub`
+    assert dbg.iss.regs[0] == 2  # 1 + 1 inside `sub`
 
 
 # ---- interrupts ------------------------------------------------------------
 def test_irq_counts_cycles_and_interrupts():
     dbg, _ = build("EI\nHLT\n", irq_at=1)
-    dbg.step()                      # EI
+    dbg.step()  # EI
     assert dbg.iss.fi == 1
-    dbg.step()                      # services the interrupt (no instruction retired)
+    dbg.step()  # services the interrupt (no instruction retired)
     assert dbg.irqs == 1
     assert dbg.retired == 1
-    assert dbg.cycles == 3          # 2 (EI is 1 byte) + 1 (interrupt)
-    assert dbg.iss.PC == 0x08       # jumped to the vector
+    assert dbg.cycles == 3  # 2 (EI is 1 byte) + 1 (interrupt)
+    assert dbg.iss.PC == 0x08  # jumped to the vector
 
 
 # ---- command parser / formatting ------------------------------------------
@@ -204,7 +224,7 @@ def test_invalid_argument_reports_error_without_crashing():
     dbg, logs = build(COUNT)
     assert dbg.handle("break") is True
     assert any("usage" in line for line in logs)
-    dbg.handle("delete 0x04")       # removing a non-existent breakpoint is fine
+    dbg.handle("delete 0x04")  # removing a non-existent breakpoint is fine
     assert dbg.breakpoints == set()
 
 

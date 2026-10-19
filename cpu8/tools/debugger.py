@@ -209,17 +209,22 @@ class Debugger:
         if self.iss.halted:
             self.out(f"(halted after {self.retired} instructions)")
         elif self.hit_break is not None:
-            self.out(f"(breakpoint at 0x{self.hit_break:02X})")
+            self.out(f"(breakpoint at 0x{self.hit_break:02X}{self._sym(self.hit_break)})")
         else:
             self.out(f"(stopped at the step limit: {limit})")
         self.out(self.state())
 
     # ---- formatting -------------------------------------------------------
+    def _sym(self, addr: int) -> str:
+        """`` (label)`` annotation for an address that has a symbol."""
+        name = self.inv_labels.get(addr)
+        return f" ({name})" if name else ""
+
     def state(self) -> str:
         r = self.iss.regs
         cpi = f"{self.cycles / self.retired:.2f}" if self.retired else "-"
         return (
-            f"PC=0x{self.iss.PC:02X} IR=0x{self.iss.IR:02X} "
+            f"PC=0x{self.iss.PC:02X}{self._sym(self.iss.PC)} IR=0x{self.iss.IR:02X} "
             f"A={r[0]:02X} B={r[1]:02X} C={r[2]:02X} D={r[3]:02X} "
             f"Z={self.iss.fz} C={self.iss.fc} N={self.iss.fn} V={self.iss.fv} "
             f"I={self.iss.fi} SP=0x{self.iss.SP:02X} "
@@ -278,11 +283,11 @@ class Debugger:
             else:
                 a = _to_int(args[0], self.labels) & 0xFF
                 self.breakpoints.add(a)
-                self.out(f"breakpoint at 0x{a:02X}")
+                self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("d", "delete"):
             a = _to_int(args[0], self.labels) & 0xFF
             self.breakpoints.discard(a)
-            self.out(f"breakpoint removed at 0x{a:02X}")
+            self.out(f"breakpoint removed at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("clear",):
             self.breakpoints.clear()
             self.out("all breakpoints removed")
@@ -290,7 +295,7 @@ class Debugger:
             if not self.breakpoints:
                 self.out("(no breakpoints)")
             for a in sorted(self.breakpoints):
-                self.out(f"breakpoint at 0x{a:02X}")
+                self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("w", "watch"):
             if not args:
                 self._list_watches()
@@ -317,7 +322,7 @@ class Debugger:
         elif cmd in ("trace",):
             n = int(args[0], 0) if args else 20
             for row in self.rows[-n:]:
-                self.out(_format_row(row))
+                self.out(_format_row(row, self.inv_labels))
         elif cmd in ("out", "outs"):
             if not self.iss.outs:
                 self.out("(no OUT yet)")
@@ -357,10 +362,11 @@ class Debugger:
             self.out(f"  {target} = 0x{val:02X}")
 
 
-def _format_row(row: tuple) -> str:
+def _format_row(row: tuple, labels: dict[str, int] | None = None) -> str:
     (pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op) = row
+    sym = f" ({labels[pc]})" if labels and pc in labels else ""
     return (
-        f"  PC={pc:02X} IR={ir:02X} A={a:02X} B={b:02X} C={c:02X} D={d:02X} "
+        f"  PC={pc:02X}{sym} IR={ir:02X} A={a:02X} B={b:02X} C={c:02X} D={d:02X} "
         f"Z{z}C{cf}N{n}V{v} SP={sp:02X} -> {pcn:02X}" + (f"  OUT {od:02X}/{op}" if ov else "")
     )
 
@@ -372,7 +378,7 @@ commands:
   c, continue        run until a breakpoint, HLT or the step limit
   b, break <addr>    set a breakpoint (address, label or L_xxxx)
   d, delete <addr>   remove a breakpoint        clear   remove all
-  bl, breakpoints    list the breakpoints
+  bl, breakpoints    list the breakpoints (with their symbol, if any)
   w, watch <target>  watch a register (A-D/SP/PC/IR/OP), a flag (fZ/fC/fN/fV/fI)
                      or a memory cell (@0x20, @label); no arg lists them
   unwatch <target>   stop watching
@@ -382,7 +388,7 @@ commands:
   trace [n]          show the last n executed instructions
   out                show the OUT sequence
   cycles             cycle count, instructions and CPI
-  labels             list the labels (if the program came from .asm)
+  labels             list the symbols (labels; .hex programs have none)
   reset              reset the CPU and the counters
   q, quit            exit
 """
