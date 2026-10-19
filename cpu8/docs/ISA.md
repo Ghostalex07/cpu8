@@ -190,17 +190,25 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 - **NOT rd** (§10.10): `C = 0`, `V = 0`.
 - **ADC rd,rs** (§10.10): like ADD but adds the carry in: `rd' = rd + rs + C`; `C = 1` if the sum ≥ 256.
 - **SBC rd,rs** (§10.10): like SUB but subtracts the borrow: `rd' = rd - rs - C`; `C = 0` if there was a borrow.
+- **TEST rd,rs** (§10.10): the `AND` result is discarded: only `Z` and `N` are
+  updated (`C=0`, `V=0`) and `rd` is not written.
+- **ADCW pr,ps** / **SUBW pr,ps** (§10.10): 16-bit versions of `ADC`/`SBC`
+  over the register pairs (`A:B`, `C:D`); the same `C` rule applies to each
+  byte chained together, and `Z=1` only if **both** result bytes are zero.
+- **PUSHF / POPF** (§10.10): `PUSHF` only saves the flags byte (it does not
+  modify the flags); `POPF` **sets** `C,Z,N,V,I` from the byte popped.
 - **ROL / ROR rd** (§10.10): `C` = the bit rotated out (`rd[7]` for ROL, `rd[0]` for ROR).
 - **SWAP / XCHG rd,rs** (§10.10): do **not** modify flags.
 - **LDW / STW rd,[rs+off]** (§10.10): only update `C` (bit 8 of the computed 9-bit address).
-- **LDI / MOV / LD / ST / OUT / IN / NOP / JMP / Jcc / HLT / PUSH / POP / CALL / RET / EI / DI**: do **not** modify flags.
+- **LDI / MOV / LD / ST / OUT / IN / NOP / JMP / Jcc / HLT / PUSH / POP / PUSHF / CALL / RET / EI / DI**: do **not** modify flags.
 
 ### The Z and N flags
 
 - `Z = 1` if the result of the flag-setting operation is `0x00`.
 - `N = result[7]` (copy of the MSB).
 - **Only** these instructions update flags: **ADD, ADDI, SUB, SUBI, AND, OR, XOR,
-  CMP, CMPI, SHL, SHR, MUL, DIV** and **NEG, NOT, ADC, SBC, ROL, ROR** (§10.10),
+  CMP, CMPI, SHL, SHR, MUL, DIV** and **NEG, NOT, ADC, SBC, ROL, ROR, TEST,
+  ADCW, SUBW, POPF** (§10.10),
   and also **INC**/**DEC** (they change `Z`, `N`
   and `V` but **not** `C`).
   In **SHL/SHR**, `Z` and `N` are recomputed on the shifted value and `C` holds the
@@ -324,13 +332,14 @@ make sim  PROG=programs/demo                          # assemble and simulate
   `C` (see §10.10).
 - Immediates with the ALU (Phase 8): `ADDI`, `SUBI`, `CMPI` (e.g. `ADDI A, 5`).
 - Extended ALU ops (Phase 12, §10.10): `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`,
-  `ROL`, `ROR`.
+  `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`.
 
 **Accepted mnemonics**: `NOP`, `LDI`, `ADDI`, `SUBI`, `CMPI`, `MOV`, `LD`, `ST`,
 `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV`, `IN`, `OUT`,
 `INC`, `DEC`, `PUSH`, `POP`, `JMP`, `CALL`, `RET`, `JZ`, `JNZ`, `JC`, `JNC`, `JHS`,
 `JLO`, `JLT`, `JGE`, `JLE`, `JGT`, `JVS`, `JVC`, `JMI`, `JPL`, `EI`, `DI`, `HLT`,
-`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `XCHG`, `ROL`, `ROR`, `LDW`, `STW`.
+`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `XCHG`, `ROL`, `ROR`, `LDW`, `STW`,
+`TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`.
 (`NOP` is encoded as `MOV A,A` = `0x20`; `JHS`/`JLO` are aliases of `JC`/`JNC`, see §4;
 `XCHG` is an alias of `SWAP`, see §10.10.)
 
@@ -364,7 +373,7 @@ accepted; commas inside the quotes do not separate fields.
    the size of each instruction: **2 bytes** for `LDI`, `ADDI`, `SUBI`, `CMPI`,
    `LD`/`ST` (direct, indirect and indexed), `JMP`, `CALL`, `MUL`, `DIV`, `Jcc`
    and the 2-byte prefixed instructions (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`,
-   `XCHG`, `ROL`, `ROR`); **3 bytes** for `LDW`/`STW`;
+   `XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`); **3 bytes** for `LDW`/`STW`;
    **1 byte** for the rest (`OUT`/`IN` are 1 byte in their register form and 2 in
    the ported `OUT n, rd`/`IN n, rd`); `.org` sets the PC and `.db` contributes as
    many bytes as it has items.
@@ -399,6 +408,7 @@ In `programs/` there are several example programs written by hand with the ISA:
 | `sort.asm`      | Sorts an array with bubble sort; the data is declared with the `.db` directive | `01 02 03 05 08 09` (hex) |
 | `irq.asm`       | Interrupt: `EI`, counter 0..9 and a handler that counts to 1 (Phase 7.5) | `0 1 2 3 4 5 6 7 8 9 1`                 |
 | `extensions3.asm` | Prefix `0xFA`: `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR` and the 16-bit `LDW`/`STW` (Phase 12) | `FB 04 10 11 FF 01 1E 1F 02 05 00 80 34 12 77 88 99 99 C1 C2` (hex) |
+| `extensions4.asm` | Prefix `0xFA`: `TEST`, `PUSHF`, `POPF` and the 16-bit pair operations `ADCW`/`SUBW` (Phase 12) | `0F 01 02 03 04 07 03 05 00 02 06 05 02 07 00 FF 08 09 0A FF FF 00 02 0B 0C` (hex) |
 
 **How they are verified.** Each program has a sibling file `programs/<name>.ref`
 with the list of expected outputs in hexadecimal (one value per line, no
@@ -618,7 +628,12 @@ The sub-operations (`xop`) are:
 | `0x6` | `ROR rd` | 2 | `rd` | rotate right through `C`: `rd ← {C, rd[7:1]}`; `C ← rd[0]`. |
 | `0x7` | `LDW rd,[rs+off]` | 3 | `rd`, `rs`, `off` | 9-bit `EA = rs + off`; `rd ← RAM[EA[7:0]]`; `C ← EA[8]`. |
 | `0x8` | `STW rd,[rs+off]` | 3 | `rd`, `rs`, `off` | 9-bit `EA = rs + off`; `RAM[EA[7:0]] ← rd`; `C ← EA[8]`. |
-| `0x9`..`0xF` | — | 2 | — | **reserved** (2-byte no-op). |
+| `0x9` | `TEST rd,rs` | 2 | `rd`, `rs` | `rd AND rs` **for the flags only** (`Z`, `N`; `C=0`, `V=0`); `rd` is **not** written. |
+| `0xA` | `PUSHF` | 2 | — | push the flags byte: `RAM[SP] ← {0,0,0,I,V,N,Z,C}`; `SP ← SP - 1`. |
+| `0xB` | `POPF` | 2 | — | `SP ← SP + 1`; the popped byte restores `C,Z,N,V,I` (bits 4..0). |
+| `0xC` | `ADCW pr,ps` | 2 | `pr`, `ps` | 16-bit pair sum: `pr:pr|1 ← pr:pr|1 + ps:ps|1 + C` (`Z C N V`); 4 cycles. |
+| `0xD` | `SUBW pr,ps` | 2 | `pr`, `ps` | 16-bit pair difference: `pr pair − ps pair − C` (`Z C N V`); 4 cycles. |
+| `0xE`..`0xF` | — | 2 | — | **reserved** (2-byte no-op). |
 
 Unlike the base indexed `LD/ST rd,[rs+off]`, the base register of `LDW`/`STW` may
 be **any** register (`A`–`D`) and the sum is computed with **9 bits**: bit 8 is
@@ -628,12 +643,28 @@ delivered to `C`, which lets a 16-bit pointer be walked one page at a time
 `ADC`/`SBC` reuse the adder (they share one ALU operation, selected by the `sh`
 bit); likewise `ROL`/`ROR` share a rotate-through-carry unit.
 
+`TEST` is the `AND` operation with its result discarded: the cheapest way to
+probe a value or to **clear `C` and `V`** without touching any register.
+
+`PUSHF`/`POPF` move the **flags byte** in and out of the stack: bit0 `C`,
+bit1 `Z`, bit2 `N`, bit3 `V`, bit4 `I`; bits 5..7 are always 0.
+
+`ADCW`/`SUBW` operate on **16-bit register pairs**: the low byte is the operand
+(`pr`/`ps`) and the high byte is the same register with bit 0 set (`pr|1`).
+The low operand must be `A` (pair `A:B`) or `C` (pair `C:D`); the assembler
+rejects odd registers. The low byte executes first (state `S_EXEC`) and the
+high byte in a second cycle (`S_EXEC2`), chaining the carry — or, for `SUBW`,
+its inversion (the borrow). `Z` is set only when **both** result bytes are
+zero, so a 16-bit zero is detected correctly. Each instruction takes 4 cycles.
+
 Hardware (see `docs/ARCHITECTURE.md`): the FSM gains an `S_OPR2` state that
 fetches the 3rd byte, `cpu.v` keeps byte 2 of the prefix in an `xop` register,
 the register file has a **second write port** (so `SWAP` writes both registers in
 the same cycle) and the RAM address can be taken from the ALU result (the 9-bit
-`EA` of `LDW`/`STW`).
+`EA` of `LDW`/`STW`), and an `S_EXEC2` state that runs the high byte of the
+16-bit `ADCW`/`SUBW` pairs (the FSM therefore has 7 states).
 
 E.g.: `NEG A`=`FA 00`, `ADC A,B`=`FA 21`, `SWAP A,C`=`FA 42`, `ROL D`=`FA 5C`,
-`LDW A,[B+3]`=`FA 71 03`, `STW C,[D+4]`=`FA 8B 04`.
-Example program: `programs/extensions3.asm`.
+`LDW A,[B+3]`=`FA 71 03`, `STW C,[D+4]`=`FA 8B 04`, `TEST A,B`=`FA 91`,
+`PUSHF`=`FA A0`, `POPF`=`FA B0`, `ADCW A,C`=`FA C2`, `SUBW A,C`=`FA D2`.
+Example programs: `programs/extensions3.asm` and `programs/extensions4.asm`.

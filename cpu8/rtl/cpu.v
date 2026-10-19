@@ -10,7 +10,13 @@
 //       PUSH v  ->  mem[SP] = v ; SP = SP - 1
 //       POP  rd ->  SP = SP + 1 ; rd = mem[SP]
 //       RET     ->  SP = SP + 1 ; PC = mem[SP]
+//       PUSHF   ->  mem[SP] = flags ; SP = SP - 1
+//       POPF    ->  SP = SP + 1 ; flags = mem[SP]
 //  That is why in PUSH the RAM is addressed with SP, and in POP/RET with SP+1.
+//
+//  Extended pair ops (ADCW/SUBW, prefix 0xFA): they take TWO EXEC cycles
+//  (S_EXEC adds/subtracts the low bytes and S_EXEC2 the high ones); c16/z16
+//  carry the low-byte carry and zero-ness between both.
 //
 //  CALL (0xC1): besides jumping, it writes the return PC (addr_CALL+2) onto the
 //  stack.  Indirect addressing (0xF4/0xF5): the register indices go in the 2nd
@@ -50,6 +56,8 @@ module cpu #(
     reg       flag_n;    // N (negative)
     reg       flag_v;    // V (signed overflow)
     reg       flag_i;    // I (interrupts enabled)
+    reg       c16;       // carry of the low-byte add of ADCW/SUBW (S_EXEC2)
+    reg       z16;       // "low byte == 0" of ADCW/SUBW (S_EXEC2 -> Z)
     reg [7:0] SP;        // stack pointer (starts at 0xF0)
 
     // ------------------------------------------------------------------
@@ -64,6 +72,7 @@ module cpu #(
     wire       sp_inc, sp_dec, sp_as_addr, sel_ram_rs, pc_from_mem;
     wire       sel_ram_pc, ind, idx;
     wire       ext, xop_ld, rf_we2, addr_alu;
+    wire       flag_ld, sel_ram_fl, pair16_ld, pair16_hi;
     wire       pc_from_vec, flag_i_set, flag_i_clear;
     wire       sel_in, io_op;
 
@@ -99,6 +108,8 @@ module cpu #(
         .sel_ram_rs(sel_ram_rs), .pc_from_mem(pc_from_mem),
         .sel_ram_pc(sel_ram_pc), .ind(ind), .idx(idx),
         .ext(ext), .xop_ld(xop_ld), .rf_we2(rf_we2), .addr_alu(addr_alu),
+        .flag_ld(flag_ld), .sel_ram_fl(sel_ram_fl),
+        .pair16_ld(pair16_ld), .pair16_hi(pair16_hi),
         .pc_from_vec(pc_from_vec), .flag_i_set(flag_i_set),
         .flag_i_clear(flag_i_clear),
         .sel_in(sel_in), .io_op(io_op),
@@ -112,8 +123,12 @@ module cpu #(
     assign alu_b = sel_one  ? 8'd1 :
                    sel_imm  ? operand : rf_rdata_rs;
 
+    // ADCW/SUBW: on the 2nd cycle the ALU takes the captured carry of the low
+    // byte.  For SUBW it is inverted because c16 means "no borrow".
+    wire alu_cin = pair16_hi ? (alu_sh ? ~c16 : c16) : flag_c;
+
     alu u_alu (
-        .op(alu_op), .sh(alu_sh), .a(alu_a), .b(alu_b), .cin(flag_c),
+        .op(alu_op), .sh(alu_sh), .a(alu_a), .b(alu_b), .cin(alu_cin),
         .y(alu_y), .c(alu_c), .v(alu_v), .z(alu_z), .n(alu_n)
     );
 
@@ -133,7 +148,8 @@ module cpu #(
 
     // ------------------------------------------------------------------
     //  RAM.  Address = PC (FETCH/OPR), SP (stack), rs indirect, or
-    //  `operand` (EXEC).  Data written = rd (ST), rs (PUSH) or PC (CALL).
+    //  `operand` (EXEC).  Data written = rd (ST), rs (PUSH), PC (CALL) or the
+    //  flags byte (PUSHF).
     // ------------------------------------------------------------------
     wire [7:0] sp_addr = sp_inc ? (SP + 8'd1) : SP;  // POP/RET read SP+1
 
@@ -141,7 +157,11 @@ module cpu #(
                      : ind ? rf_rdata_rs
                      : idx ? (rf_rdata_rs + operand)
                      : (pc_as_addr ? pc_q : (sp_as_addr ? sp_addr : operand));
-    assign ram_wdata = sel_ram_rs ? rf_rdata_rs
+    // Flags byte pushed by PUSHF: bit0 C, bit1 Z, bit2 N, bit3 V, bit4 I.
+    wire [7:0] flags_byte = {3'b000, flag_i, flag_v, flag_n, flag_z, flag_c};
+
+    assign ram_wdata = sel_ram_fl ? flags_byte :
+                       sel_ram_rs ? rf_rdata_rs
                      : (sel_ram_pc ? pc_q : rf_rdata_rd);
 
     ram u_ram (
@@ -151,10 +171,15 @@ module cpu #(
     // ------------------------------------------------------------------
     //  Register file.  In indirect mode the indices come from the 2nd byte;
     //  in prefixed (ext) mode they come from `xop` (rd = xop[3:2], rs = xop[1:0]).
+    //  On the 2nd cycle of ADCW/SUBW (pair16_hi) both addresses point to the
+    //  HIGH register of the pair (low | 1).
     // ------------------------------------------------------------------
-    wire [1:0] rf_raddr1 = ext ? xop[3:2] : ind ? operand[3:2] : instr[3:2];
-    wire [1:0] rf_raddr2 = ext ? xop[1:0] : ind ? operand[1:0] : instr[1:0];
-    wire [1:0] rf_waddr_m = ext ? xop[3:2] : ind ? operand[3:2] : rf_waddr;
+    wire [1:0] rf_raddr1 = pair16_hi ? {xop[3], 1'b1} :
+                           ext ? xop[3:2] : ind ? operand[3:2] : instr[3:2];
+    wire [1:0] rf_raddr2 = pair16_hi ? {xop[1], 1'b1} :
+                           ext ? xop[1:0] : ind ? operand[1:0] : instr[1:0];
+    wire [1:0] rf_waddr_m = pair16_hi ? {xop[3], 1'b1} :
+                            ext ? xop[3:2] : ind ? operand[3:2] : rf_waddr;
 
     regfile u_rf (
         .clk(clk), .rst(rst), .we(rf_we), .waddr(rf_waddr_m), .wdata(rf_wdata),
@@ -186,6 +211,8 @@ module cpu #(
             flag_n   <= 1'b0;
             flag_v   <= 1'b0;
             flag_i   <= 1'b0;
+            c16      <= 1'b0;
+            z16      <= 1'b0;
 `ifdef FPGA_RAM64
             SP       <= 8'h3F;   // stack in reduced RAM (64 bytes)
 `else
@@ -198,14 +225,26 @@ module cpu #(
             if (ir_ld)    IR      <= ram_rdata;
             if (opr_ld)   operand <= ram_rdata;
             if (xop_ld)   xop     <= ram_rdata;
+            if (pair16_ld) begin   // ADCW/SUBW: carry and "low == 0" of S_EXEC
+                c16 <= alu_c;
+                z16 <= alu_z;
+            end
             if (flags_we) begin
-                flag_z <= alu_z;
+                // On the 2nd cycle of ADCW/SUBW Z is the 16-bit zero.
+                flag_z <= pair16_hi ? (z16 & alu_z) : alu_z;
                 flag_n <= alu_n;
                 flag_v <= alu_v;
             end
             if (flags_c_we)  flag_c <= alu_c;
             if (flag_i_set)   flag_i <= 1'b1;
             if (flag_i_clear) flag_i <= 1'b0;
+            if (flag_ld) begin      // POPF: flags byte taken from the stack
+                flag_c <= ram_rdata[0];
+                flag_z <= ram_rdata[1];
+                flag_n <= ram_rdata[2];
+                flag_v <= ram_rdata[3];
+                flag_i <= ram_rdata[4];
+            end
             if (sp_dec)      SP <= SP - 8'd1;
             else if (sp_inc) SP <= SP + 8'd1;
             if (out_wr) begin

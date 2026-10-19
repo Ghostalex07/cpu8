@@ -18,6 +18,7 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `countdown.asm` | Countdown loop | Conditional/unconditional branches, loops. |
 | `extensions.asm` | ISA extensions (Phase 8) | Immediates `ADDI`/`SUBI`/`CMPI`, indexed `LD/ST [rs+off]` (incl. negative offset) and signed (`JLT/JGE/JLE/JGT`) and status (`JVS/JVC/JMI/JPL`) branches. |
 | `extensions3.asm` | Extended instructions behind the `0xFA` prefix (Phase 12) | `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR` and 16-bit `LDW`/`STW`, including the carry/borrow and the address bit 8 going to `C`. |
+| `extensions4.asm` | Rest of the `0xFA` prefix (Phase 12) | Flags-only `TEST`, `PUSHF`/`POPF` (flags byte on the stack) and the 16-bit pair ops `ADCW`/`SUBW` over `A:B` and `C:D`, including the carry/borrow chain and the 16-bit `Z`. |
 | `fase4.asm` | Historical development program | Consolidated basic functional path. |
 | `fibonacci.asm` | Generates a Fibonacci sequence | Arithmetic, loops, registers. |
 | `incdec.asm` | `INC`/`DEC` on registers | Flags `Z,N` (INC/DEC do **not** modify `C`). |

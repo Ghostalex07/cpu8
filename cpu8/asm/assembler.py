@@ -72,16 +72,26 @@ REGISTROS: Final[dict[str, int]] = {"A": 0b00, "B": 0b01, "C": 0b10, "D": 0b11}
 #         JLO = JNC -> jumps if rd <  rs (borrow)
 CONDICIONES: Final[dict[str, int]] = {
     # family 00: unsigned
-    "JZ": 0b0000, "JNZ": 0b0001, "JC": 0b0010, "JNC": 0b0011,
-    "JHS": 0b0010, "JLO": 0b0011,
+    "JZ": 0b0000,
+    "JNZ": 0b0001,
+    "JC": 0b0010,
+    "JNC": 0b0011,
+    "JHS": 0b0010,
+    "JLO": 0b0011,
     # family 01: signed (two's complement), using N and V
-    "JLT": 0b0100, "JGE": 0b0101, "JLE": 0b0110, "JGT": 0b0111,
+    "JLT": 0b0100,
+    "JGE": 0b0101,
+    "JLE": 0b0110,
+    "JGT": 0b0111,
     # family 10: status (V / N)
-    "JVS": 0b1000, "JVC": 0b1001, "JMI": 0b1010, "JPL": 0b1011,
+    "JVS": 0b1000,
+    "JVC": 0b1001,
+    "JMI": 0b1010,
+    "JPL": 0b1011,
 }
 
 # --- Opcodes (bits [7:4] of the first byte) ----------------------------------
-OP_GRP0: Final = 0x0   # INC/DEC/PUSH/POP (sub-operation in rd, register in rs)
+OP_GRP0: Final = 0x0  # INC/DEC/PUSH/POP (sub-operation in rd, register in rs)
 OP_LDI: Final = 0x1
 OP_MOV: Final = 0x2
 OP_LD: Final = 0x3
@@ -96,59 +106,129 @@ OP_SHIFT: Final = 0xB
 OP_JMP: Final = 0xC
 OP_JCC: Final = 0xD
 OP_OUT: Final = 0xE
-OP_HLT: Final = 0xF   # system/memory group (sub-code in rd/rs)
-OP_IND_LD: Final = 0xF4   # LD rd,[rs]  (group 0xF)
-OP_IND_ST: Final = 0xF5   # ST rd,[rs]  (group 0xF)
+OP_HLT: Final = 0xF  # system/memory group (sub-code in rd/rs)
+OP_IND_LD: Final = 0xF4  # LD rd,[rs]  (group 0xF)
+OP_IND_ST: Final = 0xF5  # ST rd,[rs]  (group 0xF)
 
 OPCODE_ALU: Final[dict[str, int]] = {  # rd,rs instructions with the same form
-    "ADD": OP_ADD, "SUB": OP_SUB, "AND": OP_AND,
-    "OR": OP_OR, "XOR": OP_XOR, "CMP": OP_CMP,
+    "ADD": OP_ADD,
+    "SUB": OP_SUB,
+    "AND": OP_AND,
+    "OR": OP_OR,
+    "XOR": OP_XOR,
+    "CMP": OP_CMP,
 }
 
 # Sub-operations of the immediate page (opcode 0x1), in the rs field.
 #   rs=00 LDI  (backward compatible), 01 ADDI, 10 SUBI, 11 CMPI.
 OPCODE_INMEDIATO: Final[dict[str, int]] = {
-    "LDI": 0b00, "ADDI": 0b01, "SUBI": 0b10, "CMPI": 0b11,
+    "LDI": 0b00,
+    "ADDI": 0b01,
+    "SUBI": 0b10,
+    "CMPI": 0b11,
 }
 
 # Extensions of group 0xF (2 bytes): the 2nd byte carries (rd<<2)|rs.
-OP_MUL: Final = 0xF6   # MUL rd,rs
-OP_DIV: Final = 0xF7   # DIV rd,rs
+OP_MUL: Final = 0xF6  # MUL rd,rs
+OP_DIV: Final = 0xF7  # DIV rd,rs
 # Ported I/O (2 bytes): byte2 = (rd<<2)|port.
 OP_OUTP: Final = 0xF8  # OUT n, rd
-OP_INP: Final = 0xF9   # IN  n, rd
+OP_INP: Final = 0xF9  # IN  n, rd
 
 # --- Extended (prefixed) instructions (Phase 12, docs/ISA.md §10) ------------
 # byte1 = 0xFA; byte2 = (xop << 4) | (rd << 2) | rs, where `xop` is the extended
 # sub-operation.  Only LDW/STW carry a third byte (the displacement).
 OP_EXT: Final = 0xFA
-XOP_NEG: Final = 0x0    # NEG  rd          (1 register)
-XOP_NOT: Final = 0x1    # NOT  rd          (1 register)
-XOP_ADC: Final = 0x2    # ADC  rd, rs
-XOP_SBC: Final = 0x3    # SBC  rd, rs
-XOP_SWAP: Final = 0x4   # SWAP rd, rs (alias XCHG)
-XOP_ROL: Final = 0x5    # ROL  rd          (1 register)
-XOP_ROR: Final = 0x6    # ROR  rd          (1 register)
-XOP_LDW: Final = 0x7    # LDW  rd, [rs+off]  (3 bytes)
-XOP_STW: Final = 0x8    # STW  rd, [rs+off]  (3 bytes)
+XOP_NEG: Final = 0x0  # NEG  rd          (1 register)
+XOP_NOT: Final = 0x1  # NOT  rd          (1 register)
+XOP_ADC: Final = 0x2  # ADC  rd, rs
+XOP_SBC: Final = 0x3  # SBC  rd, rs
+XOP_SWAP: Final = 0x4  # SWAP rd, rs (alias XCHG)
+XOP_ROL: Final = 0x5  # ROL  rd          (1 register)
+XOP_ROR: Final = 0x6  # ROR  rd          (1 register)
+XOP_LDW: Final = 0x7  # LDW  rd, [rs+off]  (3 bytes)
+XOP_STW: Final = 0x8  # STW  rd, [rs+off]  (3 bytes)
+XOP_TEST: Final = 0x9  # TEST rd, rs        (flags only)
+XOP_PUSHF: Final = 0xA  # PUSHF              (no operands)
+XOP_POPF: Final = 0xB  # POPF               (no operands)
+XOP_ADCW: Final = 0xC  # ADCW pr, ps        (16-bit pair, 2 EXEC cycles)
+XOP_SUBW: Final = 0xD  # SUBW pr, ps        (16-bit pair, 2 EXEC cycles)
 
 # Instructions that take a second byte (immediate or address).
-DOS_BYTES: Final[set[str]] = (
-    {"LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL", "MUL", "DIV",
-     "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG", "ROL", "ROR"}
-    | set(CONDICIONES)
-)
+DOS_BYTES: Final[set[str]] = {
+    "LDI",
+    "ADDI",
+    "SUBI",
+    "CMPI",
+    "LD",
+    "ST",
+    "JMP",
+    "CALL",
+    "MUL",
+    "DIV",
+    "NEG",
+    "NOT",
+    "ADC",
+    "SBC",
+    "SWAP",
+    "XCHG",
+    "ROL",
+    "ROR",
+    "TEST",
+    "PUSHF",
+    "POPF",
+    "ADCW",
+    "SUBW",
+} | set(CONDICIONES)
 
 # Prefixed instructions that also take a third byte (indexed displacement).
 TRES_BYTES: Final[set[str]] = {"LDW", "STW"}
 
 # All valid mnemonics.
 MNEMONICOS: Final[set[str]] = (
-    {"NOP", "LDI", "ADDI", "SUBI", "CMPI", "MOV", "LD", "ST", "SHL", "SHR",
-     "JMP", "CALL", "OUT", "HLT", "INC", "DEC", "PUSH", "POP", "RET", "EI", "DI",
-     "MUL", "DIV", "IN",
-     "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG", "ROL", "ROR", "LDW", "STW"}
-    | set(OPCODE_ALU) | set(CONDICIONES)
+    {
+        "NOP",
+        "LDI",
+        "ADDI",
+        "SUBI",
+        "CMPI",
+        "MOV",
+        "LD",
+        "ST",
+        "SHL",
+        "SHR",
+        "JMP",
+        "CALL",
+        "OUT",
+        "HLT",
+        "INC",
+        "DEC",
+        "PUSH",
+        "POP",
+        "RET",
+        "EI",
+        "DI",
+        "MUL",
+        "DIV",
+        "IN",
+        "NEG",
+        "NOT",
+        "ADC",
+        "SBC",
+        "SWAP",
+        "XCHG",
+        "ROL",
+        "ROR",
+        "LDW",
+        "STW",
+        "TEST",
+        "PUSHF",
+        "POPF",
+        "ADCW",
+        "SUBW",
+    }
+    | set(OPCODE_ALU)
+    | set(CONDICIONES)
 )
 
 # --- Assembler directives ----------------------------------------------------
@@ -162,8 +242,7 @@ _RE_DECIMAL: Final = re.compile(r"[0-9]+")
 # Indexed addressing: <register> <+|-> <displacement>.  The first token must be
 # a register name (not a label) to be treated this way.  The displacement can
 # be a number (with sign) or a label.
-_RE_INDEXADO: Final = re.compile(
-    r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*([+\-])\s*(\S.*)?$")
+_RE_INDEXADO: Final = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*([+\-])\s*(\S.*)?$")
 
 # Accepted range for literals: 0..255, plus -128..-1 in two's complement.
 _VALOR_MIN: Final = -128
@@ -183,16 +262,17 @@ class AssemblerError(Exception):
 class Sentencia:
     """An instruction already placed in memory (result of pass 1)."""
 
-    linea: int          # line number in the source (1-based)
-    mnem: str           # mnemonic in uppercase
-    ops: list[str]      # already tokenized operands
-    texto: str          # original text (for the listing)
-    dir: int            # assigned memory address
+    linea: int  # line number in the source (1-based)
+    mnem: str  # mnemonic in uppercase
+    ops: list[str]  # already tokenized operands
+    texto: str  # original text (for the listing)
+    dir: int  # assigned memory address
 
 
 # ============================================================================
 #  Source text parsing
 # ============================================================================
+
 
 def parsear_numero(tok: str) -> int:
     """Converts a numeric literal (dec/hex/bin, optional sign) to an integer.
@@ -210,10 +290,10 @@ def parsear_numero(tok: str) -> int:
 
     if not t:
         raise ValueError(f"invalid number: '{tok}'")
-    if t[0] == "$":              # unified with the standard 0x prefix
+    if t[0] == "$":  # unified with the standard 0x prefix
         t = "0x" + t[1:]
     if t[:2].lower() in ("0x", "0b"):
-        valor = int(t, 0)        # base 0 infers 16/2 from the prefix
+        valor = int(t, 0)  # base 0 infers 16/2 from the prefix
     elif _RE_DECIMAL.fullmatch(t):
         valor = int(t)
     else:
@@ -274,23 +354,19 @@ def tamano_instruccion(mnem: str, operandos: Sequence[str] = ()) -> int:
 #  Pass 2: encoding an instruction
 # ============================================================================
 
+
 def indice_registro(tok: str, num_linea: int) -> int:
     if tok.upper() not in REGISTROS:
-        raise AssemblerError(
-            num_linea, f"unknown register '{tok}' (use A, B, C or D)")
+        raise AssemblerError(num_linea, f"unknown register '{tok}' (use A, B, C or D)")
     return REGISTROS[tok.upper()]
 
 
-def exigir_operandos(num_linea: int, mnem: str, operandos: Sequence[str],
-                     n: int) -> None:
+def exigir_operandos(num_linea: int, mnem: str, operandos: Sequence[str], n: int) -> None:
     if len(operandos) != n:
-        raise AssemblerError(
-            num_linea, f"{mnem} expects {n} operand(s), found "
-                       f"{len(operandos)}")
+        raise AssemblerError(num_linea, f"{mnem} expects {n} operand(s), found {len(operandos)}")
 
 
-def resolver_valor(resolver: Callable[[str], int], tok: str,
-                   num_linea: int) -> int:
+def resolver_valor(resolver: Callable[[str], int], tok: str, num_linea: int) -> int:
     """Resolves a number or label and annotates the line on any error."""
     try:
         return resolver(tok)
@@ -316,9 +392,13 @@ def es_indirecto(op: str, etiquetas: Mapping[str, int]) -> bool:
     return op not in etiquetas and op.upper() in REGISTROS
 
 
-def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
-              resolver: Callable[[str], int],
-              etiquetas: Mapping[str, int]) -> list[int]:
+def codificar(
+    num_linea: int,
+    mnem: str,
+    operandos: Sequence[str],
+    resolver: Callable[[str], int],
+    etiquetas: Mapping[str, int],
+) -> list[int]:
     """Returns the list of bytes of an instruction.
 
     ``resolver(tok)`` converts a label or a number into its value 0..255.
@@ -352,21 +432,22 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
             base = m_idx.group(1).upper()
             if base not in REGISTROS:
                 raise AssemblerError(
-                    num_linea, f"unknown base '{m_idx.group(1)}' in "
-                               f"indexed addressing (use B, C or D)")
+                    num_linea,
+                    f"unknown base '{m_idx.group(1)}' in indexed addressing (use B, C or D)",
+                )
             if base == "A":
                 raise AssemblerError(
-                    num_linea, "indexed addressing uses base B, C or D "
-                               "(with base A the absolute mode would be used)")
+                    num_linea,
+                    "indexed addressing uses base B, C or D "
+                    "(with base A the absolute mode would be used)",
+                )
             expr = (m_idx.group(3) or "").strip()
             if not expr:
-                raise AssemblerError(num_linea,
-                                     "missing indexed displacement")
+                raise AssemblerError(num_linea, "missing indexed displacement")
             off = resolver_valor(resolver, expr, num_linea)
             if m_idx.group(2) == "-":
-                off = (-off) & 0xFF          # negative displacement (two's complement)
-            return [((OP_LD if mnem == "LD" else OP_ST) << 4) | (rd << 2)
-                    | REGISTROS[base], off]
+                off = (-off) & 0xFF  # negative displacement (two's complement)
+            return [((OP_LD if mnem == "LD" else OP_ST) << 4) | (rd << 2) | REGISTROS[base], off]
         # If the 2nd operand is a register -> indirect: LD/ST rd,[rs].
         if es_indirecto(op2, etiquetas):
             rs = REGISTROS[op2.upper()]
@@ -413,8 +494,7 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
         # Extended unary (2 bytes): 0xFA, (xop<<4)|(rd<<2).
         exigir_operandos(num_linea, mnem, operandos, 1)
         rd = indice_registro(operandos[0], num_linea)
-        xop = {"NEG": XOP_NEG, "NOT": XOP_NOT,
-               "ROL": XOP_ROL, "ROR": XOP_ROR}[mnem]
+        xop = {"NEG": XOP_NEG, "NOT": XOP_NOT, "ROL": XOP_ROL, "ROR": XOP_ROR}[mnem]
         return [OP_EXT, (xop << 4) | (rd << 2)]
 
     if mnem in ("ADC", "SBC", "SWAP", "XCHG"):
@@ -422,8 +502,35 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
         exigir_operandos(num_linea, mnem, operandos, 2)
         rd = indice_registro(operandos[0], num_linea)
         rs = indice_registro(operandos[1], num_linea)
-        xop = {"ADC": XOP_ADC, "SBC": XOP_SBC,
-               "SWAP": XOP_SWAP, "XCHG": XOP_SWAP}[mnem]
+        xop = {"ADC": XOP_ADC, "SBC": XOP_SBC, "SWAP": XOP_SWAP, "XCHG": XOP_SWAP}[mnem]
+        return [OP_EXT, (xop << 4) | (rd << 2) | rs]
+
+    if mnem == "TEST":
+        # Extended TEST (2 bytes): AND that only writes the flags.
+        exigir_operandos(num_linea, mnem, operandos, 2)
+        rd = indice_registro(operandos[0], num_linea)
+        rs = indice_registro(operandos[1], num_linea)
+        return [OP_EXT, (XOP_TEST << 4) | (rd << 2) | rs]
+
+    if mnem in ("PUSHF", "POPF"):
+        # Extended flag stack ops (2 bytes, without operands).
+        exigir_operandos(num_linea, mnem, operandos, 0)
+        xop = XOP_PUSHF if mnem == "PUSHF" else XOP_POPF
+        return [OP_EXT, (xop << 4)]
+
+    if mnem in ("ADCW", "SUBW"):
+        # Extended 16-bit pair ops (2 bytes).  The pair is (low, low|1): A is
+        # the pair A:B and C the pair C:D, so both operands must be A or C
+        # (docs/ISA.md §10.10).  The hardware takes 2 EXEC cycles.
+        exigir_operandos(num_linea, mnem, operandos, 2)
+        rd = indice_registro(operandos[0], num_linea)
+        rs = indice_registro(operandos[1], num_linea)
+        if rd & 1 or rs & 1:
+            raise AssemblerError(
+                num_linea,
+                f"{mnem} takes pairs: operands must be A (=A:B) or C (=C:D)",
+            )
+        xop = XOP_ADCW if mnem == "ADCW" else XOP_SUBW
         return [OP_EXT, (xop << 4) | (rd << 2) | rs]
 
     if mnem in ("LDW", "STW"):
@@ -438,18 +545,15 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
             rs = indice_registro(m_idx.group(1), num_linea)
             expr = (m_idx.group(3) or "").strip()
             if not expr:
-                raise AssemblerError(num_linea,
-                                     "missing indexed displacement")
+                raise AssemblerError(num_linea, "missing indexed displacement")
             off = resolver_valor(resolver, expr, num_linea)
             if m_idx.group(2) == "-":
-                off = (-off) & 0xFF          # negative displacement
-        elif not m_idx and _RE_IDENTIFICADOR.fullmatch(op2) \
-                and op2 not in etiquetas:
+                off = (-off) & 0xFF  # negative displacement
+        elif not m_idx and _RE_IDENTIFICADOR.fullmatch(op2) and op2 not in etiquetas:
             rs = indice_registro(op2, num_linea)  # plain [rs]: off = 0
             off = 0
         else:
-            raise AssemblerError(
-                num_linea, f"{mnem} expects [rs+off] (base A, B, C or D)")
+            raise AssemblerError(num_linea, f"{mnem} expects [rs+off] (base A, B, C or D)")
         xop = XOP_LDW if mnem == "LDW" else XOP_STW
         return [OP_EXT, (xop << 4) | (rd << 2) | rs, off]
 
@@ -463,14 +567,13 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
         if len(operandos) == 2:
             puerto = resolver_valor(resolver, operandos[0], num_linea)
             if puerto > 3:
-                raise AssemblerError(
-                    num_linea, f"port {puerto} out of range 0..3")
+                raise AssemblerError(num_linea, f"port {puerto} out of range 0..3")
             rd = indice_registro(operandos[1], num_linea)
             op = OP_INP if mnem == "IN" else OP_OUTP
             return [op, (rd << 2) | puerto]
         raise AssemblerError(
-            num_linea, f"{mnem} expects 1 or 2 operands ((rd) or (n, rd)), "
-                       f"found {len(operandos)}")
+            num_linea, f"{mnem} expects 1 or 2 operands ((rd) or (n, rd)), found {len(operandos)}"
+        )
 
     if mnem == "HLT":
         exigir_operandos(num_linea, mnem, operandos, 0)
@@ -482,11 +585,11 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
 
     if mnem == "EI":
         exigir_operandos(num_linea, mnem, operandos, 0)
-        return [0xF2]   # enables interrupts (flag I <= 1)
+        return [0xF2]  # enables interrupts (flag I <= 1)
 
     if mnem == "DI":
         exigir_operandos(num_linea, mnem, operandos, 0)
-        return [0xF3]   # disables interrupts (flag I <= 0)
+        return [0xF3]  # disables interrupts (flag I <= 0)
 
     if mnem == "JMP":
         exigir_operandos(num_linea, mnem, operandos, 1)
@@ -512,7 +615,12 @@ def codificar(num_linea: int, mnem: str, operandos: Sequence[str],
 
 # Escapes allowed inside .db strings.
 _ESCAPES: Final[dict[str, int]] = {
-    "n": 0x0A, "t": 0x09, "r": 0x0D, "0": 0x00, "\\": 0x5C, '"': 0x22,
+    "n": 0x0A,
+    "t": 0x09,
+    "r": 0x0D,
+    "0": 0x00,
+    "\\": 0x5C,
+    '"': 0x22,
 }
 
 
@@ -570,8 +678,7 @@ def _desescapar_cadena(s: str, num_linea: int) -> list[int]:
             i += 2
             continue
         if ord(ch) > 0xFF:
-            raise AssemblerError(
-                num_linea, f"non-ASCII character (0x{ord(ch):X}) in string")
+            raise AssemblerError(num_linea, f"non-ASCII character (0x{ord(ch):X}) in string")
         out.append(ord(ch))
         i += 1
     return out
@@ -581,8 +688,7 @@ def _comprobar_rango(bruto: int, num_linea: int) -> int:
     """Validates 0..255 (or -128..-1 in two's complement) and returns the byte 0..255."""
     valor = bruto + 256 if bruto < 0 else bruto
     if not (_VALOR_MIN <= bruto <= _VALOR_MAX) or not (0 <= valor <= 255):
-        raise AssemblerError(
-            num_linea, f"value {bruto} out of range 0..255 (or -128..-1)")
+        raise AssemblerError(num_linea, f"value {bruto} out of range 0..255 (or -128..-1)")
     return valor
 
 
@@ -590,8 +696,10 @@ def _comprobar_rango(bruto: int, num_linea: int) -> int:
 #  Main process (two passes + constants)
 # ============================================================================
 
-def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
-                                          list[tuple[int, list[int], str]]]:
+
+def ensamblar(
+    texto_fuente: str,
+) -> tuple[list[int], dict[str, int], list[tuple[int, list[int], str]]]:
     """Assembles the text and returns ``(bytes, labels, listing)``.
 
     ``listado``: list of ``(address, [bytes], original_text)`` per
@@ -617,8 +725,7 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
             bruto = parsear_numero(tok)
         except ValueError:
             if _RE_IDENTIFICADOR.fullmatch(tok):
-                raise AssemblerError(
-                    num_linea, f"undefined constant '{tok}'") from None
+                raise AssemblerError(num_linea, f"undefined constant '{tok}'") from None
             raise AssemblerError(num_linea, f"invalid value '{tok}'") from None
         return _comprobar_rango(bruto, num_linea)
 
@@ -635,7 +742,7 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
         constantes[nombre] = resolver_const(ops[1], i)
 
     # ---- Pass 1: label addresses and program size --------------------------
-    etiquetas: dict[str, int] = {}   # name -> address
+    etiquetas: dict[str, int] = {}  # name -> address
     plan: list[tuple] = []
     pc = 0
     linea_overflow: int | None = None
@@ -655,7 +762,8 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
             destino = resolver_const(ops[0], i)
             if destino < pc:
                 raise AssemblerError(
-                    i, f".org 0x{destino:02X} goes backwards (PC is already 0x{pc:02X})")
+                    i, f".org 0x{destino:02X} goes backwards (PC is already 0x{pc:02X})"
+                )
             plan.append(("org", destino, i, texto))
             pc = destino
             continue
@@ -684,9 +792,7 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
     if linea_overflow is not None:
         # The line where the program exceeds 256 bytes is reported, not the
         # total number of lines of the file (which includes comments/blank ones).
-        raise AssemblerError(
-            linea_overflow,
-            f"program is {pc} bytes; the maximum is 256")
+        raise AssemblerError(linea_overflow, f"program is {pc} bytes; the maximum is 256")
 
     # ---- Pass 2: encode, resolve labels and emit ---------------------------
     def resolver(tok: str) -> int:
@@ -716,7 +822,7 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
             bs: list[int] = []
             for tipo, valor in campos:
                 if tipo == "str":
-                    bs.extend(valor)               # type: ignore[arg-type]
+                    bs.extend(valor)  # type: ignore[arg-type]
                 else:
                     bs.append(resolver_valor(resolver, valor, i))  # type: ignore[arg-type]
             dir_ = len(salida)
@@ -735,6 +841,7 @@ def ensamblar(texto_fuente: str) -> tuple[list[int], dict[str, int],
 #  Command-line interface
 # ============================================================================
 
+
 def formatear_listado(listado: Sequence[tuple[int, Sequence[int], str]]) -> str:
     lineas = []
     for dir_, bs, texto in listado:
@@ -752,14 +859,17 @@ def _fichero_salida_por_defecto(fuente: str) -> str:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        description="Assembler for the 8-bit CPU (cpu8)")
+    ap = argparse.ArgumentParser(description="Assembler for the 8-bit CPU (cpu8)")
     ap.add_argument("fuente", help="input .asm file")
-    ap.add_argument("-o", "--salida",
-                    help="output .hex file (by default, the same name "
-                         "with a .hex extension)")
-    ap.add_argument("-l", "--listado", action="store_true",
-                    help="show the address, bytes and source of each line")
+    ap.add_argument(
+        "-o", "--salida", help="output .hex file (by default, the same name with a .hex extension)"
+    )
+    ap.add_argument(
+        "-l",
+        "--listado",
+        action="store_true",
+        help="show the address, bytes and source of each line",
+    )
     args = ap.parse_args(argv)
 
     fichero_salida = args.salida or _fichero_salida_por_defecto(args.fuente)
@@ -778,15 +888,16 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     if not salida:
-        print(f"Warning: '{args.fuente}' contains no instruction; "
-              f"an empty .hex is generated.", file=sys.stderr)
+        print(
+            f"Warning: '{args.fuente}' contains no instruction; an empty .hex is generated.",
+            file=sys.stderr,
+        )
 
     try:
         with open(fichero_salida, "w", encoding="utf-8") as f:
             f.writelines(f"{b:02X}\n" for b in salida)
     except OSError as e:
-        print(f"Error: cannot write '{fichero_salida}': {e}",
-              file=sys.stderr)
+        print(f"Error: cannot write '{fichero_salida}': {e}", file=sys.stderr)
         return 1
 
     if args.listado:

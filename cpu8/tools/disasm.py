@@ -28,10 +28,10 @@ _ALU = {0x5: "ADD", 0x6: "SUB", 0x7: "AND", 0x8: "OR", 0x9: "XOR", 0xA: "CMP"}
 _INMEDIATO = {0b00: "LDI", 0b01: "ADDI", 0b10: "SUBI", 0b11: "CMPI"}
 _GRP0 = {0b00: "INC", 0b01: "DEC", 0b10: "PUSH", 0b11: "POP"}
 _JCC = (
-    ("JZ", "JNZ", "JC", "JNC"),      # family 00: unsigned
-    ("JLT", "JGE", "JLE", "JGT"),    # family 01: signed (N/V)
-    ("JVS", "JVC", "JMI", "JPL"),    # family 10: status
-    ("JVS", "JVC", "JMI", "JPL"),    # family 11: reserved (same as 10)
+    ("JZ", "JNZ", "JC", "JNC"),  # family 00: unsigned
+    ("JLT", "JGE", "JLE", "JGT"),  # family 01: signed (N/V)
+    ("JVS", "JVC", "JMI", "JPL"),  # family 10: status
+    ("JVS", "JVC", "JMI", "JPL"),  # family 11: reserved (same as 10)
 )
 # Extended (prefixed, 0xFA) sub-operations: byte2 = (xop<<4)|(rd<<2)|rs.
 _XOP_NEG = 0x0
@@ -43,6 +43,11 @@ _XOP_ROL = 0x5
 _XOP_ROR = 0x6
 _XOP_LDW = 0x7
 _XOP_STW = 0x8
+_XOP_TEST = 0x9
+_XOP_PUSHF = 0xA
+_XOP_POPF = 0xB
+_XOP_ADCW = 0xC
+_XOP_SUBW = 0xD
 _RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
 
 
@@ -59,6 +64,7 @@ def leer_fuente(path: Path) -> list[int]:
     if path.suffix == ".asm":
         sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "asm"))
         import assembler  # noqa: E402
+
         return assembler.ensamblar(path.read_text())[0]
     return leer_hex(path)
 
@@ -94,6 +100,16 @@ def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
         return f"LDW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
     if xop == _XOP_STW:
         return f"STW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
+    if xop == _XOP_TEST:
+        return f"TEST {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_PUSHF:
+        return "PUSHF", 2
+    if xop == _XOP_POPF:
+        return "POPF", 2
+    if xop == _XOP_ADCW:
+        return f"ADCW {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_SUBW:
+        return f"SUBW {REGS[rd]}, {REGS[rs]}", 2
     return f"; reserved 0xFA 0x{xb:02X}", 2
 
 
@@ -149,7 +165,7 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
         if b in (0xF8, 0xF9):
             m = "OUT" if b == 0xF8 else "IN"
             return f"{m} {sig & 3}, {REGS[(sig >> 2) & 3]}", 2
-        if b == 0xFA:                       # extended (prefixed) instruction
+        if b == 0xFA:  # extended (prefixed) instruction
             return _decodificar_ext(mem, i)
         return f"; reserved 0x{b:02X}", 1
     return f"; reserved 0x{b:02X}", 1  # unreachable (op is 0..F)
@@ -178,7 +194,7 @@ def desensamblar(mem: list[int], etiquetas: bool = True) -> list[str]:
         if i in destinos:
             lineas.append(f"L_{i:04X}:")
         texto, ln = decodificar(mem, i)
-        bs = " ".join(f"{x:02X}" for x in mem[i:i + ln])
+        bs = " ".join(f"{x:02X}" for x in mem[i : i + ln])
         lineas.append(f"  {i:04X}: {bs:<8} {texto}")
         i += ln
     return lineas
@@ -204,7 +220,7 @@ def main(argv: list[str]) -> int:
     if "-o" in args:
         k = args.index("-o")
         salida = Path(args[k + 1])
-        del args[k:k + 2]
+        del args[k : k + 2]
     if not args:
         print(__doc__)
         return 2

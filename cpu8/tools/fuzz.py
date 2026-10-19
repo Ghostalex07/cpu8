@@ -15,12 +15,26 @@ from __future__ import annotations
 import random
 
 REGISTROS = ("A", "B", "C", "D")
-BASES_INDEXADO = ("B", "C", "D")   # A (rs=00) encodes absolute mode
+BASES_INDEXADO = ("B", "C", "D")  # A (rs=00) encodes absolute mode
 _ALU = ("ADD", "SUB", "AND", "OR", "XOR", "CMP")
 _INMEDIATOS = ("LDI", "ADDI", "SUBI", "CMPI")
 _DESPLAZAMIENTOS = ("SHL", "SHR")
-_SALTOS = ("JMP", "CALL", "JZ", "JNZ", "JC", "JNC", "JLT", "JGE", "JLE",
-           "JGT", "JVS", "JVC", "JMI", "JPL")
+_SALTOS = (
+    "JMP",
+    "CALL",
+    "JZ",
+    "JNZ",
+    "JC",
+    "JNC",
+    "JLT",
+    "JGE",
+    "JLE",
+    "JGT",
+    "JVS",
+    "JVC",
+    "JMI",
+    "JPL",
+)
 _SIN_OPERANDO = ("EI", "DI", "RET", "HLT")
 
 
@@ -29,9 +43,35 @@ def _longitud(linea: str) -> int:
     mnem = linea.split()[0].upper()
     if mnem in ("LDW", "STW"):
         return 3
-    if mnem in ("LDI", "ADDI", "SUBI", "CMPI", "LD", "ST", "JMP", "CALL",
-                "MUL", "DIV", "NEG", "NOT", "ADC", "SBC", "SWAP", "XCHG",
-                "ROL", "ROR") or mnem in _SALTOS:
+    if (
+        mnem
+        in (
+            "LDI",
+            "ADDI",
+            "SUBI",
+            "CMPI",
+            "LD",
+            "ST",
+            "JMP",
+            "CALL",
+            "MUL",
+            "DIV",
+            "NEG",
+            "NOT",
+            "ADC",
+            "SBC",
+            "SWAP",
+            "XCHG",
+            "ROL",
+            "ROR",
+            "TEST",
+            "PUSHF",
+            "POPF",
+            "ADCW",
+            "SUBW",
+        )
+        or mnem in _SALTOS
+    ):
         return 2
     if mnem in ("OUT", "IN"):
         return 2 if "," in linea[3:] else 1
@@ -60,7 +100,7 @@ def generar_fuente(rng: random.Random, n: int) -> str:
 def _linea_aleatoria(rng: random.Random) -> str:
     r, s = rng.choice(REGISTROS), rng.choice(REGISTROS)
     imm = rng.randrange(256)
-    k = rng.randrange(16)
+    k = rng.randrange(17)
 
     if k == 0:
         return f"{rng.choice(('INC', 'DEC'))} {r}"
@@ -98,7 +138,7 @@ def _linea_aleatoria(rng: random.Random) -> str:
     if k == 10:
         return f"{rng.choice(_SIN_OPERANDO)}"
     if k == 11:
-        return f"{rng.choice(_SALTOS)} {{T}}"   # target resolved in 2nd pass
+        return f"{rng.choice(_SALTOS)} {{T}}"  # target resolved in 2nd pass
     if k == 12:
         # Extended unary (prefix 0xFA): NEG / NOT / ROL / ROR.
         return f"{rng.choice(('NEG', 'NOT', 'ROL', 'ROR'))} {r}"
@@ -110,5 +150,14 @@ def _linea_aleatoria(rng: random.Random) -> str:
         base = rng.choice(REGISTROS)
         off = rng.randrange(-128, 128)
         return f"{rng.choice(('LDW', 'STW'))} {r}, [{base}{off:+d}]"
+    if k == 15:
+        # Flag ops (prefix 0xFA): TEST with any regs, or PUSHF/POPF.
+        if rng.random() < 0.5:
+            return f"TEST {r}, {s}"
+        return rng.choice(("PUSHF", "POPF"))
+    if k == 16:
+        # 16-bit pairs (prefix 0xFA): A = A:B, C = C:D (only A or C).
+        pr, ps = rng.choice(("A", "C")), rng.choice(("A", "C"))
+        return f"{rng.choice(('ADCW', 'SUBW'))} {pr}, {ps}"
     # NOP (encoded as MOV A, A) for variety.
     return "NOP"

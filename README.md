@@ -20,19 +20,20 @@ can run entirely **without hardware**, using `iverilog` and/or `verilator`.
 - **Registers**: `A`, `B`, `C`, `D` (8 bits) and, inside the CPU, `PC`, `SP`,
   `IR`, `operand` and the flags **Z** (zero), **C** (carry/no-*borrow*), **N**
   (negative), **V** (signed overflow) and **I** (interrupts).
-- **Control unit** implemented as a **6-state FSM**
-  (`FETCH` → `OPR` → (`OPR2`) → `EXEC`, plus `IRQ` and `HLT`). The length (1, 2 or
-  3 bytes) is decided in `FETCH`; there is no decode state.
+- **Control unit** implemented as a **7-state FSM**
+  (`FETCH` → `OPR` → (`OPR2`) → `EXEC` (→ `EXEC2` for the 16-bit pair ops), plus
+  `IRQ` and `HLT`). The length (1, 2 or 3 bytes) is decided in `FETCH`; there is
+  no decode state.
 - **ALU** built from a single **9-bit adder** that performs both `ADD` and
   `SUB`/`CMP` (via `a + ~b + 1`), with full flag computation and a carry input for
-  `ADC`/`SBC`/`ROL`/`ROR`.
+  `ADC`/`SBC`/`ROL`/`ROR` (and for the high byte of `ADCW`/`SUBW`).
 - **Rich instruction set**: load/store (absolute, indexed `[rs+off]` and
   register-indirect), arithmetic and logic, shifts, `INC`/`DEC`, stack
   (`PUSH`/`POP`), subroutines (`CALL`/`RET`), unconditional and conditional
   branches (unsigned and signed/status), **hardware `MUL`/`DIV`**, **port I/O**
   (`IN`/`OUT`), **interrupts** (`EI`/`DI`) and the **`0xFA`-prefixed extended
-  instructions** (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR`, 16-bit
-  `LDW`/`STW`).
+  instructions** (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR`, `TEST`,
+  `PUSHF`, `POPF`, 16-bit `ADCW`/`SUBW` and `LDW`/`STW`).
 - **Custom two-pass assembler** with `.org`, `.db` and `.equ` directives.
 - **Verification**: module testbenches, per-program output comparison against a
   golden reference (`.ref`), byte/trace hash regression, assemble→disassemble→
@@ -128,11 +129,11 @@ The ISA includes:
 | Family | Instructions |
 |---|---|
 | Data | `LDI`, `MOV`, `LD`, `ST` (absolute / indexed / indirect) |
-| Arithmetic | `ADD`, `ADDI`, `SUB`, `SUBI`, `CMP`, `CMPI`, `INC`, `DEC`, `MUL`, `DIV`, `ADC`, `SBC`, `NEG` |
-| Logic | `AND`, `OR`, `XOR`, `NOT` |
+| Arithmetic | `ADD`, `ADDI`, `SUB`, `SUBI`, `CMP`, `CMPI`, `INC`, `DEC`, `MUL`, `DIV`, `ADC`, `SBC`, `ADCW`, `SUBW`, `NEG` |
+| Logic | `AND`, `OR`, `XOR`, `NOT`, `TEST` |
 | Shift/rotate | `SHL`, `SHR`, `ROL`, `ROR` |
 | Data (16-bit indexed) | `LDW`, `STW` |
-| Stack and register moves | `PUSH`, `POP`, `SWAP`/`XCHG`, `JMP`, `CALL`, `RET`, `HLT` |
+| Stack and register moves | `PUSH`, `POP`, `PUSHF`/`POPF`, `SWAP`/`XCHG`, `JMP`, `CALL`, `RET`, `HLT` |
 | Conditional branches | `JZ`/`JNZ`, `JC`/`JNC`, `JLT`/`JGE`/`JLE`/`JGT`, `JVS`/`JVC`/`JMI`/`JPL` |
 | System and I/O | `EI`, `DI`, `IN`, `OUT` (register and port `IN n,rd` / `OUT n,rd`) |
 

@@ -148,3 +148,8 @@ The flags appearing in the *Flags* column are those that the instruction **modif
 | `ROR` | `0xFA 0x60` — `0xFA ; byte2 = (0x6<<4) + (rd<<2)` | 2 | rd | Z C N V | Rotate right through C: rd <- {C, rd[7:1]}; C <- rd[0]. |
 | `LDW` | `0xFA 0x71 0x03` — `0xFA ; byte2 = (0x7<<4) + (rd<<2) + rs ; byte3 = off` | 3 | rd, [rs+off] | C | Wide indexed load: EA = rs + off (9 bits); rd <- RAM[EA[7:0]]; C <- EA[8] (16-bit pointer). |
 | `STW` | `0xFA 0x8B 0x04` — `0xFA ; byte2 = (0x8<<4) + (rd<<2) + rs ; byte3 = off` | 3 | rd, [rs+off] | C | Wide indexed store: EA = rs + off (9 bits); RAM[EA[7:0]] <- rd; C <- EA[8] (16-bit pointer). |
+| `TEST` | `0xFA 0x91` — `0xFA ; byte2 = (0x9<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Test (AND for the flags): Z, N <- rd AND rs; C=0, V=0 (rd is not written). |
+| `PUSHF` | `0xFA 0xA0` — `0xFA ; byte2 = (0xA<<4)` | 2 | — | — | Push the flags byte {I,V,N,Z,C} onto the stack (bits 4..0) and decrement SP. |
+| `POPF` | `0xFA 0xB0` — `0xFA ; byte2 = (0xB<<4)` | 2 | — | Z C N V I | Pop the flags byte from the stack into C, Z, N, V and I (SP incremented). |
+| `ADCW` | `0xFA 0xC2` — `0xFA ; byte2 = (0xC<<4) + (pr<<2) + ps ; 2 EXEC cycles` | 2 | pr, ps | Z C N V | 16-bit pair add: pair pr <- pair pr + pair ps + C, where the pair is (low, low\|1): A=A:B, C=C:D (Z = 16-bit zero; 4 cycles). |
+| `SUBW` | `0xFA 0xD2` — `0xFA ; byte2 = (0xD<<4) + (pr<<2) + ps ; 2 EXEC cycles` | 2 | pr, ps | Z C N V | 16-bit pair subtract: pair pr <- pair pr - pair ps - C (C=1 means no borrow; Z = 16-bit zero; 4 cycles). |

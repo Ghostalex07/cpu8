@@ -4,7 +4,7 @@
 //  Decodes the current instruction (`instr`) and the flags, and generates all
 //  the control signals of the datapath.  The datapath (cpu.v) decides nothing.
 //
-//  6-state FSM.  The instruction length is decided in FETCH itself from the
+//  7-state FSM.  The instruction length is decided in FETCH itself from the
 //  byte that was just read from RAM (`fetched`), so a separate DECODE state is
 //  not needed: the instruction is already loaded into IR in that same cycle.
 //  No combinational loop is formed because during FETCH `ram_addr` is the PC
@@ -14,7 +14,8 @@
 //      S_IRQ    -> S_FETCH             (pushes the PC and jumps to the vector)
 //      S_OPR    -> (prefixed and subop 7/8) ? S_OPR2 : S_EXEC
 //      S_OPR2   -> S_EXEC              (3rd byte of LDW/STW)
-//      S_EXEC   -> (instr == HLT ? S_HLT : S_FETCH)
+//      S_EXEC   -> (ADCW/SUBW ? S_EXEC2 : (instr == HLT ? S_HLT : S_FETCH))
+//      S_EXEC2  -> S_FETCH              (high byte of ADCW/SUBW)
 //      S_HLT    -> S_HLT
 //
 //  Prefixed instructions (Phase 12, docs/ISA.md §10): byte1 = 0xFA selects an
@@ -84,6 +85,10 @@ module control (
     output reg        xop_ld,      // xop <= RAM[PC] (2nd byte of a prefixed instr)
     output reg        rf_we2,      // 2nd register-file write port (SWAP rd,rs)
     output reg        addr_alu,    // RAM is addressed with the ALU result (LDW/STW)
+    output reg        flag_ld,     // load the flags byte from RAM (POPF)
+    output reg        sel_ram_fl,  // RAM write data = flags byte (PUSHF)
+    output reg        pair16_ld,   // capture c16/z16 of the low add (ADCW/SUBW)
+    output reg        pair16_hi,   // 2nd cycle of ADCW/SUBW: high regs of the pairs
     output reg        pc_from_vec, // PC <= IRQ_VECTOR (interrupt handling)
     output reg        flag_i_set,  // EI: flag I <= 1
     output reg        flag_i_clear,// DI or interrupt: flag I <= 0
@@ -129,7 +134,8 @@ module control (
                      S_EXEC   = 3'd2,
                      S_IRQ    = 3'd3,
                      S_HLT    = 3'd4,
-                     S_OPR2   = 3'd5;   // 3rd byte of a prefixed instruction
+                     S_OPR2   = 3'd5,   // 3rd byte of a prefixed instruction
+                     S_EXEC2  = 3'd6;   // high byte of ADCW/SUBW
 
     // --- Instruction fields ---
     wire [3:0] opcode = instr[7:4];
@@ -229,6 +235,10 @@ module control (
         xop_ld      = 1'b0;
         rf_we2      = 1'b0;
         addr_alu    = 1'b0;
+        flag_ld     = 1'b0;
+        sel_ram_fl  = 1'b0;
+        pair16_ld   = 1'b0;
+        pair16_hi   = 1'b0;
 
         case (state)
 
@@ -320,6 +330,22 @@ module control (
                         // STW rd,[rs+off] : mem[EA[7:0]] <- rd; C <- EA[8]
                         4'h8: begin alu_op=OP_ADD; sel_a_rs=1'b1; sel_imm=1'b1;
                                     addr_alu=1'b1; ram_we=1'b1; flags_c_we=1'b1; end
+                        // TEST rd,rs : flags <- rd AND rs (register untouched)
+                        4'h9: begin alu_op=OP_AND;
+                                    flags_we=1'b1; flags_c_we=1'b1; end
+                        // PUSHF : push the flags byte onto the stack
+                        4'hA: begin ram_we=1'b1; sel_ram_fl=1'b1;
+                                    sp_as_addr=1'b1; sp_dec=1'b1; end
+                        // POPF : pop the flags byte (C,Z,N,V,I) from the stack
+                        4'hB: begin flag_ld=1'b1;
+                                    sp_as_addr=1'b1; sp_inc=1'b1; end
+                        // ADCW pr,ps : pair pr <- pair pr + pair ps + C
+                        //   (low bytes here; the high bytes follow in S_EXEC2)
+                        4'hC: begin alu_op=ALU_ADC_SBC; alu_sh=1'b0;
+                                    rf_we=1'b1; pair16_ld=1'b1; end
+                        // SUBW pr,ps : pair pr <- pair pr - pair ps - C
+                        4'hD: begin alu_op=ALU_ADC_SBC; alu_sh=1'b1;
+                                    rf_we=1'b1; pair16_ld=1'b1; end
                         default: ;   // reserved prefix subops: 2-byte no-op
                     endcase
                 end
@@ -449,7 +475,27 @@ module control (
 
                     default:  ;
                 endcase
-                nstate = is_hlt ? S_HLT : S_FETCH;
+                // ADCW/SUBW need a 2nd EXEC cycle for the high byte of the
+                // pair; everything else finishes here.
+                nstate = (is_ext && (xsub == 4'hC || xsub == 4'hD)) ? S_EXEC2 :
+                         (is_hlt ? S_HLT : S_FETCH);
+            end
+
+            // ---- Second execute cycle: high byte of ADCW/SUBW ----
+            // In S_EXEC the low bytes were added/subtracted and written to rd
+            // and the carry (plus "low byte == 0") was captured in c16/z16.
+            // Here the HIGH registers of both pairs (rd|1, rs|1) go through the
+            // ALU with that carry and the 16-bit flags are written.  The ALU
+            // carry-in is inverted for SUBW because c16 means "no borrow".
+            S_EXEC2: begin
+                ext        = 1'b1;
+                pair16_hi  = 1'b1;         // addresses point to the high regs
+                alu_op     = ALU_ADC_SBC;
+                alu_sh     = (xsub == 4'hD);
+                rf_we      = 1'b1;
+                flags_we   = 1'b1;         // Z is gated with z16 in cpu.v
+                flags_c_we = 1'b1;
+                nstate     = S_FETCH;
             end
 
             // ---- Stop after HLT ----

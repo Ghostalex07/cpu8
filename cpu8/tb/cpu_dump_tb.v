@@ -55,8 +55,11 @@ module cpu_dump_tb;
 
     // The instruction "retires" on the edge in which S_EXEC is executed; it is
     // detected on the following negedge (the registers are already updated).
+    // Pair ops (ADCW/SUBW) run one extra cycle in S_EXEC2, so for them the
+    // sample is deferred to the negedge after that cycle (post-EXEC2 state).
     reg [2:0] st_d = 3'd0;
-    localparam [2:0] S_EXEC = 3'd2;
+    localparam [2:0] S_EXEC  = 3'd2,
+                     S_EXEC2 = 3'd6;
 
     task dump_mem;
         integer j;
@@ -83,7 +86,7 @@ module cpu_dump_tb;
     always @(negedge clk) begin
         #1;
         if (!rst) begin
-            if (st_d == S_EXEC) begin
+            if ((st_d == S_EXEC && dut.u_ctrl.state != S_EXEC2) || st_d == S_EXEC2) begin
                 $display("I %02h %02h %02h %02h %02h %02h %b %b %b %b %02h %02h %b %02h %02h",
                          trace_pc, dut.IR,
                          dut.u_rf.regs[0], dut.u_rf.regs[1],

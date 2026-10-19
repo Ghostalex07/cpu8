@@ -39,8 +39,14 @@ REGS = ("A", "B", "C", "D")
 _FLAG_ATTRS = {"fZ": "fz", "fC": "fc", "fN": "fn", "fV": "fv", "fI": "fi"}
 # Watchable registers: name -> (attribute, index | None).
 _REG_ATTRS = {
-    "A": ("regs", 0), "B": ("regs", 1), "C": ("regs", 2), "D": ("regs", 3),
-    "SP": ("SP", None), "PC": ("PC", None), "IR": ("IR", None), "OP": ("operand", None),
+    "A": ("regs", 0),
+    "B": ("regs", 1),
+    "C": ("regs", 2),
+    "D": ("regs", 3),
+    "SP": ("SP", None),
+    "PC": ("PC", None),
+    "IR": ("IR", None),
+    "OP": ("operand", None),
 }
 # Instruction length in bytes (1/2/3), for the cycle model and hints.
 _LENGTH = iss_mod.instruction_length
@@ -72,9 +78,16 @@ def _to_int(tok: str, labels: dict[str, int]) -> int:
 class Debugger:
     """State and command handling of the interactive debugger."""
 
-    def __init__(self, mem: list[int], labels: dict[str, int] | None = None, *,
-                 irq_vector: int = 0x08, irq_at: int | None = None,
-                 max_steps: int = 100000, out=print) -> None:
+    def __init__(
+        self,
+        mem: list[int],
+        labels: dict[str, int] | None = None,
+        *,
+        irq_vector: int = 0x08,
+        irq_at: int | None = None,
+        max_steps: int = 100000,
+        out=print,
+    ) -> None:
         self.program = list(mem)
         self.labels = dict(labels or {})
         self.inv_labels = {v: k for k, v in self.labels.items()}
@@ -88,8 +101,7 @@ class Debugger:
 
     # ---- lifecycle --------------------------------------------------------
     def reset(self) -> None:
-        self.iss = iss_mod.ISS(self.program, irq_vector=self.irq_vector,
-                               irq_at=self.irq_at)
+        self.iss = iss_mod.ISS(self.program, irq_vector=self.irq_vector, irq_at=self.irq_at)
         self.cycles = 0
         self.retired = 0
         self.irqs = 0
@@ -118,13 +130,21 @@ class Debugger:
 
     def _cycles(self) -> int:
         # Cycles model control.v's FSM: one byte = 2 cycles (FETCH+EXEC) and
-        # each additional fetched byte adds one (S_OPR, S_OPR2).
-        return _LENGTH(self.iss.mem, self.iss.PC) + 1
+        # each additional fetched byte adds one (S_OPR, S_OPR2).  ADCW/SUBW
+        # add a 2nd EXEC cycle (S_EXEC2) for the high byte of the pair.
+        n = _LENGTH(self.iss.mem, self.iss.PC) + 1
+        mem, pc = self.iss.mem, self.iss.PC
+        if (
+            mem[pc] == 0xFA
+            and pc + 1 < len(mem)
+            and ((mem[pc + 1] >> 4) in (iss_mod.XOP_ADCW, iss_mod.XOP_SUBW))
+        ):
+            n += 1
+        return n
 
     def _step_one(self) -> None:
         """Executes exactly one instruction (and one interrupt cycle if pending)."""
-        if (self.iss.irq_at is not None and self.iss.fi
-                and self.retired >= self.iss.irq_at):
+        if self.iss.irq_at is not None and self.iss.fi and self.retired >= self.iss.irq_at:
             self.iss.take_irq()
             self.irqs += 1
             self.cycles += 1
@@ -158,13 +178,16 @@ class Debugger:
                 self.out("(the CPU is halted; use 'reset')")
                 break
             b = self.iss.mem[self.iss.PC]
-            if (b >> 4) == 0xC and (b & 3) == 1:      # CALL: run until it returns
+            if (b >> 4) == 0xC and (b & 3) == 1:  # CALL: run until it returns
                 ret = (self.iss.PC + 2) & 0xFF
                 self._step_one()
                 guard = 0
-                while (not self.iss.halted and self.iss.PC != ret
-                       and self.iss.PC not in self.breakpoints
-                       and guard < self.max_steps):
+                while (
+                    not self.iss.halted
+                    and self.iss.PC != ret
+                    and self.iss.PC not in self.breakpoints
+                    and guard < self.max_steps
+                ):
                     self._step_one()
                     guard += 1
             else:
@@ -195,11 +218,13 @@ class Debugger:
     def state(self) -> str:
         r = self.iss.regs
         cpi = f"{self.cycles / self.retired:.2f}" if self.retired else "-"
-        return (f"PC=0x{self.iss.PC:02X} IR=0x{self.iss.IR:02X} "
-                f"A={r[0]:02X} B={r[1]:02X} C={r[2]:02X} D={r[3]:02X} "
-                f"Z={self.iss.fz} C={self.iss.fc} N={self.iss.fn} V={self.iss.fv} "
-                f"I={self.iss.fi} SP=0x{self.iss.SP:02X} "
-                f"| cyc={self.cycles} insn={self.retired} cpi={cpi}")
+        return (
+            f"PC=0x{self.iss.PC:02X} IR=0x{self.iss.IR:02X} "
+            f"A={r[0]:02X} B={r[1]:02X} C={r[2]:02X} D={r[3]:02X} "
+            f"Z={self.iss.fz} C={self.iss.fc} N={self.iss.fn} V={self.iss.fv} "
+            f"I={self.iss.fi} SP=0x{self.iss.SP:02X} "
+            f"| cyc={self.cycles} insn={self.retired} cpi={cpi}"
+        )
 
     def cmd_disasm(self, addr: int | None = None, count: int = 8) -> None:
         i = self.iss.PC if addr is None else addr
@@ -209,7 +234,7 @@ class Debugger:
             if i in self.inv_labels:
                 self.out(f"{self.inv_labels[i]}:")
             text, ln = disasm.decodificar(self.iss.mem, i)
-            bs = " ".join(f"{x:02X}" for x in self.iss.mem[i:i + ln])
+            bs = " ".join(f"{x:02X}" for x in self.iss.mem[i : i + ln])
             marker = ">" if i == self.iss.PC else " "
             self.out(f"{marker} {i:04X}: {bs:<8} {text}")
             i += ln
@@ -218,8 +243,7 @@ class Debugger:
         end = min(256, addr + max(1, count))
         base = addr & ~0xF
         while base < end:
-            cells = " ".join(f"{self.iss.mem[base + j]:02X}"
-                             for j in range(16) if base + j < 256)
+            cells = " ".join(f"{self.iss.mem[base + j]:02X}" for j in range(16) if base + j < 256)
             self.out(f"{base:02X}: {cells}")
             base += 16
 
@@ -301,8 +325,9 @@ class Debugger:
                 self.out("OUT: " + " ".join(f"{v:02X}/{p}" for v, p in self.iss.outs))
         elif cmd in ("cycles",):
             cpi = f"{self.cycles / self.retired:.2f}" if self.retired else "-"
-            self.out(f"cycles={self.cycles} instructions={self.retired} "
-                     f"interrupts={self.irqs} cpi={cpi}")
+            self.out(
+                f"cycles={self.cycles} instructions={self.retired} interrupts={self.irqs} cpi={cpi}"
+            )
         elif cmd in ("reset",):
             self.reset()
             self.out("(reset)")
@@ -317,8 +342,10 @@ class Debugger:
 
     def _add_watch(self, target: str) -> None:
         if not self._valid_target(target):
-            self.out(f"error: cannot watch '{target}' "
-                     f"(registers A-D/SP/PC/IR/OP, flags fZ/fC/fN/fV/fI, or @address)")
+            self.out(
+                f"error: cannot watch '{target}' "
+                f"(registers A-D/SP/PC/IR/OP, flags fZ/fC/fN/fV/fI, or @address)"
+            )
             return
         self.watches[target] = self._read(target)
         self.out(f"watching {target} (now 0x{self.watches[target]:02X})")
@@ -332,9 +359,10 @@ class Debugger:
 
 def _format_row(row: tuple) -> str:
     (pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op) = row
-    return (f"  PC={pc:02X} IR={ir:02X} A={a:02X} B={b:02X} C={c:02X} D={d:02X} "
-            f"Z{z}C{cf}N{n}V{v} SP={sp:02X} -> {pcn:02X}"
-            + (f"  OUT {od:02X}/{op}" if ov else ""))
+    return (
+        f"  PC={pc:02X} IR={ir:02X} A={a:02X} B={b:02X} C={c:02X} D={d:02X} "
+        f"Z{z}C{cf}N{n}V{v} SP={sp:02X} -> {pcn:02X}" + (f"  OUT {od:02X}/{op}" if ov else "")
+    )
 
 
 HELP = """\
@@ -361,19 +389,39 @@ commands:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ap = argparse.ArgumentParser(
-        description="Interactive debugger for cpu8 (over tools/iss.py)")
+    ap = argparse.ArgumentParser(description="Interactive debugger for cpu8 (over tools/iss.py)")
     ap.add_argument("program", help="program .asm or .hex to debug")
-    ap.add_argument("--irq", type=int, default=None, metavar="N",
-                    help="assert the irq signal after N retired instructions")
-    ap.add_argument("--irq-vector", type=lambda s: int(s, 0), default=0x08,
-                    help="interrupt vector (default 0x08)")
-    ap.add_argument("--max-steps", type=int, default=100000,
-                    help="instruction limit for 'continue' (default 100000)")
-    ap.add_argument("-e", "--exec", dest="exec_cmds", action="append", default=[],
-                    metavar="CMDS", help="run these commands (';'-separated) and exit")
-    ap.add_argument("--script", type=Path, default=None,
-                    help="read the commands from a file and exit")
+    ap.add_argument(
+        "--irq",
+        type=int,
+        default=None,
+        metavar="N",
+        help="assert the irq signal after N retired instructions",
+    )
+    ap.add_argument(
+        "--irq-vector",
+        type=lambda s: int(s, 0),
+        default=0x08,
+        help="interrupt vector (default 0x08)",
+    )
+    ap.add_argument(
+        "--max-steps",
+        type=int,
+        default=100000,
+        help="instruction limit for 'continue' (default 100000)",
+    )
+    ap.add_argument(
+        "-e",
+        "--exec",
+        dest="exec_cmds",
+        action="append",
+        default=[],
+        metavar="CMDS",
+        help="run these commands (';'-separated) and exit",
+    )
+    ap.add_argument(
+        "--script", type=Path, default=None, help="read the commands from a file and exit"
+    )
     args = ap.parse_args(argv)
 
     path = Path(args.program)
@@ -386,12 +434,15 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Assembly error in {path}: {e}", file=sys.stderr)
         return 1
 
-    dbg = Debugger(mem, labels, irq_vector=args.irq_vector, irq_at=args.irq,
-                   max_steps=args.max_steps)
+    dbg = Debugger(
+        mem, labels, irq_vector=args.irq_vector, irq_at=args.irq, max_steps=args.max_steps
+    )
     dbg.out(f"cpu8 debugger - {path} ({len(mem)} bytes)")
     if labels:
-        dbg.out("labels: " + ", ".join(
-            f"{k}=0x{v:02X}" for k, v in sorted(labels.items(), key=lambda kv: kv[1])))
+        dbg.out(
+            "labels: "
+            + ", ".join(f"{k}=0x{v:02X}" for k, v in sorted(labels.items(), key=lambda kv: kv[1]))
+        )
 
     commands: list[str] = []
     for chunk in args.exec_cmds:
