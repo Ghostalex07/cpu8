@@ -10,7 +10,7 @@ CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unifie
 - **Control**: synchronous FSM with 7 states (`FETCH`, `OPR`, `OPR2`, `EXEC`, `EXEC2`, `IRQ`, `HLT`)
 - **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
 - **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle
-- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory (~30 % of the HX1K LUTs)
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory and ~64 % of the HX1K logic cells, closing timing at 12 MHz. CI enforces the area/timing budget (`tools/fpga_report.py`).
 
 ## Datapath
 

@@ -163,7 +163,7 @@ debug:
 pytools:
 	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
 	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py \
-	  $(TOOLS_DIR)/test_debugger.py -q
+	  $(TOOLS_DIR)/test_debugger.py $(TOOLS_DIR)/test_fpga_report.py -q
 
 ## --- Lint of the Python code with Ruff (config in ruff.toml) ---
 lint:
@@ -277,12 +277,18 @@ fpga: dirs
 	$(ICEPACK) $(BUILD)/top.asc $(BUILD)/top.bin; \
 	ls -l $(BUILD)/top.bin $(BUILD)/top.asc $(BUILD)/top.json
 
+## Same as fpga, but also checks the area/timing budget (tools/fpga_report.py).
+fpga-check: dirs
+	@$(MAKE) --no-print-directory fpga > $(BUILD)/fpga.log 2>&1 \
+	  || { tail -n 40 $(BUILD)/fpga.log; exit 1; }
+	@$(PYTHON) $(TOOLS_DIR)/fpga_report.py $(BUILD)/fpga.log
+
 clean:
 	rm -rf $(BUILD)
 
 .PHONY: all test modtests irqtest progtests asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest regress regress-update verilator \
-	coverage vlint fpga clean help check
+	coverage vlint fpga fpga-check clean help check
 
 ## --- Full local battery: the same as CI runs ---
 check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
@@ -293,6 +299,7 @@ help:
 	@echo "make coverage                      (Verilator coverage report of the RTL)"
 	@echo "make vlint                         (Verilator -Wall analysis only of the RTL)"
 	@echo "make fpga FPGA_PROG=<name>         (synthesizes a bitstream for iCEstick)"
+	@echo "make fpga-check FPGA_PROG=<name>   (fpga + area/timing budget check)"
 	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"
 	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"
 	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"

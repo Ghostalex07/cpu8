@@ -159,6 +159,10 @@ The project relies on several layers of checking, all runnable locally:
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under
   `build/verilator-cov/`.
+- **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
+  bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
+  job — fails if the design outgrows the area budget or misses the 12 MHz timing
+  target (`tools/fpga_report.py`).
 - **Reference model (ISS)**: `tools/iss.py` implements the ISA in Python. The
   **differential fuzzing** (`make difftest`, `tools/difftest.py` +
   `tb/cpu_dump_tb.v`) runs each program on the RTL and on the ISS and compares the
@@ -177,7 +181,8 @@ The project relies on several layers of checking, all runnable locally:
   over the Python code).
 
 All of it runs in **GitHub Actions** on every push and *pull request*
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)).
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); a separate job
+synthesizes the FPGA design and enforces the area/timing budget.
 
 ---
 

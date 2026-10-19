@@ -62,3 +62,32 @@ jobs:
 
       - name: Regression harness (bytes + trace + fuzz)
         run: make regress
+
+  # Synthesis needs the iCE40 toolchain and is slow, so it runs in its own job
+  # instead of blocking the fast test suite. The budget check fails the build
+  # if the design outgrows the iCE40HX1K or misses the 12 MHz timing target.
+  fpga:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    defaults:
+      run:
+        working-directory: cpu8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Install iCE40 toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yosys nextpnr-ice40 icestorm
+
+      - name: Synthesize, place and route (iCE40HX1K)
+        run: |
+          set -o pipefail
+          mkdir -p build
+          make fpga 2>&1 | tee build/fpga.log
+
+      - name: FPGA area and timing budget
+        run: python3 tools/fpga_report.py build/fpga.log

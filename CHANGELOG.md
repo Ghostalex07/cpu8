@@ -38,6 +38,11 @@ The project does not publish numbered releases yet, so changes are grouped under
   under `build/verilator-cov/` (line, toggle, branch, expression and FSM-state
   coverage). `tb/verilator/sim_main.cpp` writes the coverage file at exit when
   built with coverage (guarded by `VM_COVERAGE`).
+- **FPGA timing/area check in CI**: a dedicated `fpga` GitHub Actions job installs
+  the iCE40 toolchain, runs `make fpga` on the iCE40HX1K and then
+  `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds 80 %
+  of the logic cells or misses the 12 MHz timing target (currently 823/1280 LCs,
+  ~14 MHz). `make fpga-check` runs the same check locally.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).
