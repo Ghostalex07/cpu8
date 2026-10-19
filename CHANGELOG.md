@@ -32,6 +32,12 @@ The project does not publish numbered releases yet, so changes are grouped under
   annotated with its `.asm` label (breakpoint confirmations, `bl`, the `PC=` in
   `regs` and the `trace` rows); `break <label>`, `disasm <label>` and
   `watch @label` already resolved symbols.
+- **RTL coverage with Verilator** (`make coverage`): builds a separate
+  instrumented model (`--coverage`, `-Wno-COVERIGN`), runs every demo program
+  with `+verilator+coverage+file+` and merges the runs into an annotated report
+  under `build/verilator-cov/` (line, toggle, branch, expression and FSM-state
+  coverage). `tb/verilator/sim_main.cpp` writes the coverage file at exit when
+  built with coverage (guarded by `VM_COVERAGE`).
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).

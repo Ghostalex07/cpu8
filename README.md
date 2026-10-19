@@ -57,6 +57,7 @@ make test        # module testbenches + assemble/simulate/compare programs/*.asm
 make pytools     # pytest: assembler, ISA table, disassembler, ISS model and debugger
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
+make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
 make difftest    # differential RTL-vs-model fuzzing
 make regress     # byte + trace regression + round-trip fuzzing
 make check       # all of the above (the same suite CI runs)
@@ -154,6 +155,10 @@ The project relies on several layers of checking, all runnable locally:
   `cpu_tb.v` and its `OUT` output is compared with `programs/*.ref`.
 - **Interrupts**: `irq_tb.v` checks IRQ handling.
 - **Co-simulation** with Verilator (`make verilator`).
+- **Coverage** of the RTL with `make coverage`: Verilator instruments a separate
+  build (`--coverage`), runs every demo program and merges the runs into an
+  annotated report (line, toggle, branch and FSM-state coverage) under
+  `build/verilator-cov/`.
 - **Reference model (ISS)**: `tools/iss.py` implements the ISA in Python. The
   **differential fuzzing** (`make difftest`, `tools/difftest.py` +
   `tb/cpu_dump_tb.v`) runs each program on the RTL and on the ISS and compares the

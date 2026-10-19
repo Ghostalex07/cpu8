@@ -39,6 +39,7 @@ make lint          # ruff over the Python code
 make difftest      # differential RTL-vs-reference-model fuzzing
 make regress       # byte + trace regression + round-trip fuzzing
 make verilator     # C++ co-simulation (requires verilator)
+make coverage      # Verilator coverage report of the RTL (requires verilator)
 ```
 
 If your change intentionally affects assembly you will have to regenerate the

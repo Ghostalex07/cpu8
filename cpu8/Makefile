@@ -21,6 +21,7 @@ PYTHON   ?= python3
 RUFF     ?= ruff
 # Verilator (Phase 7.6): uses the one from PATH or, if not, the one installed in ~/.local/bin.
 VERILATOR ?= $(shell command -v verilator 2>/dev/null || echo $(HOME)/.local/bin/verilator)
+VERILATOR_COVERAGE ?= $(shell command -v verilator_coverage 2>/dev/null || echo $(HOME)/.local/bin/verilator_coverage)
 # FPGA flow (Phase 7.6): yosys + nextpnr-ice40 + icepack.  The ones from
 # PATH can be used, or the YoWASP packages (pip install yowasp-yosys yowasp-nextpnr-ice40).
 YOSYS    ?= $(shell command -v yosys 2>/dev/null || command -v yowasp-yosys 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys)
@@ -36,6 +37,7 @@ TOOLS_DIR = tools
 PROG_DIR = programs
 BUILD    = build
 VL_DIR   = $(BUILD)/verilator
+COV_DIR  = $(BUILD)/verilator-cov
 
 # All the testbenches: tb/<module>_tb.v
 TB_SRCS  = $(wildcard $(TB_DIR)/*_tb.v)
@@ -216,6 +218,42 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
 	$(VL_DIR)/Vcpu_sim +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref +irq=1
 
+## --- Coverage (Phase 12c): line/toggle coverage of the RTL with Verilator ---
+## Builds a SEPARATE instrumented model (--coverage), runs the demo programs
+## writing one .dat per run and then merges everything into an annotated
+## report: build/verilator-cov/coverage.info and build/verilator-cov/report/.
+$(COV_DIR)/Vcpu_sim: $(TB_DIR)/verilator/sim_main.cpp $(TB_DIR)/verilator/cpu_sim.v $(RTL_DIR)/*.v
+	$(VERILATOR) --cc --exe --build -j -O3 --coverage -Wno-COVERIGN \
+	  --top-module cpu_sim -Wno-UNOPTFLAT \
+	  -Mdir $(COV_DIR) \
+	  $(CURDIR)/$(TB_DIR)/verilator/sim_main.cpp $(CURDIR)/$(TB_DIR)/verilator/cpu_sim.v $(CURDIR)/$(RTL_DIR)/*.v
+
+coverage: dirs $(COV_DIR)/Vcpu_sim
+	@set -e; rm -f $(COV_DIR)/cov_*.dat; \
+	for p in $(PROGS); do \
+	  base=$${p%.asm}; name=$$(basename $$base); \
+	  echo "=== coverage: $$name ==="; \
+	  $(PYTHON) $(ASM_DIR)/assembler.py $$p; \
+	  if [ -f $$base.ref ]; then \
+	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref \
+	      +verilator+coverage+file+$(COV_DIR)/cov_$$name.dat >/dev/null; \
+	  else \
+	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex \
+	      +verilator+coverage+file+$(COV_DIR)/cov_$$name.dat >/dev/null; \
+	  fi; \
+	done; \
+	echo "=== coverage: irq ==="; \
+	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
+	$(COV_DIR)/Vcpu_sim +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref +irq=1 \
+	  +verilator+coverage+file+$(COV_DIR)/cov_irq.dat >/dev/null; \
+	echo "=== coverage: merge + annotated report ==="; \
+	$(VERILATOR_COVERAGE) -write-info $(COV_DIR)/coverage.info $(COV_DIR)/cov_*.dat; \
+	$(VERILATOR_COVERAGE) -annotate $(COV_DIR)/report $(COV_DIR)/cov_*.dat; \
+	tot=$$(grep -c '^DA:' $(COV_DIR)/coverage.info || true); \
+	cov=$$(grep '^DA:' $(COV_DIR)/coverage.info | grep -vc ',0$$' || true); \
+	echo "coverage (lines): $$cov/$$tot executed $$([ "$$tot" -gt 0 ] && awk -v c=$$cov -v t=$$tot 'BEGIN {printf "(%.1f%%)", 100*c/t}' || echo '')"; \
+	echo "report: $(COV_DIR)/coverage.info and $(COV_DIR)/report/"
+
 ## --- Analysis only (lint) of Verilator on the RTL ---
 vlint:
 	$(VERILATOR) --lint-only -Wall --top-module cpu $(RTL_DIR)/*.v
@@ -244,7 +282,7 @@ clean:
 
 .PHONY: all test modtests irqtest progtests asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest regress regress-update verilator \
-	vlint fpga clean help check
+	coverage vlint fpga clean help check
 
 ## --- Full local battery: the same as CI runs ---
 check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
@@ -252,6 +290,7 @@ check: vlint modtests progtests irqtest verilator pytools difftest regress docs-
 help:
 	@echo "make test                          (modules + demo programs + irq)"
 	@echo "make verilator                     (simulates the RTL with Verilator)"
+	@echo "make coverage                      (Verilator coverage report of the RTL)"
 	@echo "make vlint                         (Verilator -Wall analysis only of the RTL)"
 	@echo "make fpga FPGA_PROG=<name>         (synthesizes a bitstream for iCEstick)"
 	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"

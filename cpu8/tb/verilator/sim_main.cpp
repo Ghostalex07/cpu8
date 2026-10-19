@@ -10,6 +10,9 @@
 // ---------------------------------------------------------------------------
 #include "verilated.h"
 #include "Vcpu_sim.h"
+#if defined(VM_COVERAGE) && VM_COVERAGE
+#include "verilated_cov.h"
+#endif
 
 #include <cstdio>
 #include <cstring>
@@ -98,6 +101,9 @@ int main(int argc, char** argv) {
         printf("\nCPU (Verilator): ALL TESTS PASSED\n");
         rc = 0;
     }
+#if defined(VM_COVERAGE) && VM_COVERAGE
+    Verilated::threadContextp()->coveragep()->write();  // honors +verilator+coverage+file+
+#endif
     delete top;
     return rc;
 }

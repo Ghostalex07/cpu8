@@ -119,7 +119,7 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 - **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v` (includes exhaustive sweeps in the ALU)
 - **Programs**: each `programs/*.asm` is assembled, simulated with `cpu_tb.v` and its `OUT` is compared with `programs/*.ref`
 - **IRQ**: `irq_tb.v` verifies correct handling
-- **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`
+- **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`; with `--coverage` (`make coverage`) a separate instrumented model is built and the demo runs are merged into an annotated report
 - **Directed**: `cpu_directed_tb.v` covers corner cases (CALL/RET, stack, ported I/O, etc.)
 - **Assembler**: `asm/test_assembler.py` (pytest) verifies the instruction-by-instruction encoding; `asm/test_isa_table.py` checks that the ISA table does not drift from the assembler or the disassembler.
 - **Differential**: `tools/iss.py` (reference model) is contrasted instruction by
