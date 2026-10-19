@@ -24,6 +24,7 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `incdec.asm` | `INC`/`DEC` on registers | Flags `Z,N` (INC/DEC do **not** modify `C`). |
 | `indirect.asm` | Indirect addressing `[rs]` | Register-indirect load/store. |
 | `irq.asm` | Hardware interrupt | IRQ handling with `IRQ_VECTOR=0x10`. Verifies it is handled **once**. |
+| `logic.asm` | Bitwise and shift instructions | `OR`/`XOR` (Z/N from the result), `SHL`/`SHR` (the displaced bit goes to `C`) and `ROL`/`ROR` rotating **through** `C`, including the round trip `0x40 -> 0x81 -> 0x40`. |
 | `multiply.asm` | Multiplication by repeated addition | Algorithm with loops and an accumulator. |
 | `muldiv.asm` | Hardware `MUL`/`DIV` (Phase 9) | Multiplication, overflow (`C=1`), division and division by zero (`C=1`). |
 | `inout.asm` | `IN` input and port output `OUT n, rd` (Phase 9) | Reads the input port and writes to ports 0/1/2. |

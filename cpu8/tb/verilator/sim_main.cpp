@@ -35,9 +35,11 @@ int main(int argc, char** argv) {
     Verilated::commandArgs(argc, argv);       // enables $value$plusargs in the RTL
 
     const char* expfile = nullptr;
+    const char* covfile = nullptr;   // coverage dump target, when built with --coverage
     bool usar_irq = false;
     for (int i = 1; i < argc; i++) {
         if (strncmp(argv[i], "+exp=", 5) == 0) expfile = argv[i] + 5;
+        else if (strncmp(argv[i], "+cov=", 5) == 0) covfile = argv[i] + 5;
         else if (strcmp(argv[i], "+irq=1") == 0) usar_irq = true;
     }
 
@@ -102,7 +104,12 @@ int main(int argc, char** argv) {
         rc = 0;
     }
 #if defined(VM_COVERAGE) && VM_COVERAGE
-    Verilated::threadContextp()->coveragep()->write();  // honors +verilator+coverage+file+
+    // Dump the coverage database.  Verilator <= 5.020 does not know the
+    // +verilator+coverage+file+ plusarg and aborts on unknown runtime
+    // arguments, so the path arrives through our own +cov= instead.  An
+    // explicit const char* argument matches 5.020's write(const char*) and
+    // converts to std::string on newer versions.
+    if (covfile) Verilated::threadContextp()->coveragep()->write(covfile);
 #endif
     delete top;
     return rc;

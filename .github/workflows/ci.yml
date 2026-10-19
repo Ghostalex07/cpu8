@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Cancel the superseded runs of a branch/PR that is being pushed to quickly;
+# a run that is already on main is never cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   test:
     # Pinned to 24.04 (not ubuntu-latest) so the runner does not change the
@@ -26,12 +32,14 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: .github/requirements-ci.txt
 
       - name: Install dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y iverilog verilator
-          python3 -m pip install --quiet pytest ruff
+          python3 -m pip install --quiet -r ../.github/requirements-ci.txt
 
       - name: Verilator lint
         run: make vlint
@@ -51,7 +59,7 @@ jobs:
       - name: Verilator tests
         run: make verilator
 
-      - name: Python tests (assembler + ISA table + disassembler + ISS)
+      - name: Python unit tests (assembler, ISA table, disassembler, ISS, debugger, FPGA report)
         run: make pytools
 
       - name: ISA docs up to date (docs/OPCODES.md)
@@ -64,7 +72,7 @@ jobs:
         run: make regress
 
   # Synthesis needs the iCE40 toolchain and is slow, so it runs in its own job
-  # instead of blocking the fast test suite. The budget check fails the build
+  # instead of blocking the fast test suite.  The budget check fails the build
   # if the design outgrows the iCE40HX1K or misses the 12 MHz timing target.
   fpga:
     runs-on: ubuntu-24.04
@@ -82,18 +90,22 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.12'
+          # The YoWASP wheels are ~85 MB; caching them saves most of the
+          # install time and, more importantly, makes the job robust against
+          # PyPI hiccups.
+          cache: 'pip'
+          cache-dependency-path: .github/requirements-fpga.txt
 
       # The distro toolchain is not used here on purpose: nextpnr 0.6 (Ubuntu
       # 24.04) places the design at 11.35 MHz, below the 12 MHz target, and then
       # exits with an error.  The YoWASP wheels carry the same yosys/nextpnr
-      # (0.70 / 0.11) the design is calibrated against, so the budget check is
-      # meaningful.  The versions are pinned to keep the check reproducible;
-      # bump them deliberately when a new release is known to still fit.
+      # the design is calibrated against, so the budget check is meaningful.
+      # The versions are pinned in .github/requirements-fpga.txt to keep the
+      # check reproducible; bump them deliberately when a new release is known
+      # to still fit.
       - name: Install iCE40 toolchain (YoWASP)
         run: |
-          python3 -m pip install --quiet \
-            'yowasp-yosys==0.69.0.0.post1233' \
-            'yowasp-nextpnr-ice40==0.11.1.0.post826'
+          python3 -m pip install --quiet -r ../.github/requirements-fpga.txt
           yowasp-yosys -V
           yowasp-nextpnr-ice40 --version
 
@@ -105,3 +117,57 @@ jobs:
 
       - name: FPGA area and timing budget
         run: python3 tools/fpga_report.py build/fpga.log
+
+      # When place and route fails, the short log `make fpga` prints is usually
+      # not enough to tell an area overflow from a routing problem, so keep the
+      # whole nextpnr log around.
+      - name: Upload the nextpnr log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fpga-log
+          path: cpu8/build/fpga.log
+          if-no-files-found: ignore
+
+  # Informational: line/toggle/FSM coverage of the RTL over the demo programs.
+  # It never blocks a push (continue-on-error) and it is not part of
+  # `make check` locally either; the annotated report is uploaded as an
+  # artifact so the numbers can be tracked over time.  Note that the exact
+  # percentage depends on the Verilator version (the runner has 5.020, a
+  # local install is typically newer).
+  coverage:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    continue-on-error: true
+
+    defaults:
+      run:
+        working-directory: cpu8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y g++ verilator
+          verilator --version
+
+      - name: RTL coverage over the demo programs
+        run: make coverage
+
+      - name: Upload the annotated report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: rtl-coverage
+          path: |
+            cpu8/build/verilator-cov/coverage.info
+            cpu8/build/verilator-cov/report/
+          if-no-files-found: ignore

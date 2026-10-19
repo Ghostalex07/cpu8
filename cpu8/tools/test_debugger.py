@@ -109,6 +109,45 @@ def test_clear_removes_breakpoints():
     assert dbg.breakpoints == set()
 
 
+def test_until_reaches_a_label():
+    dbg, logs = build(COUNT)
+    dbg.handle("until loop")  # LDI A, LDI B -> lands on the loop head
+    assert dbg.iss.PC == 0x04
+    assert dbg.retired == 2
+    assert any("(reached 0x04 (loop)" in line for line in logs)
+
+
+def test_until_always_steps_at_least_once():
+    dbg, logs = build(COUNT)
+    dbg.step(2)  # at the loop head, A = 3
+    dbg.handle("until loop")  # OUT, SUB, JNZ -> back on the loop head
+    assert dbg.iss.PC == 0x04
+    assert dbg.iss.regs[0] == 2  # one pass of the loop ran
+    assert any("3 instructions" in line for line in logs)
+
+
+def test_until_stops_on_a_breakpoint_before_the_target():
+    dbg, logs = build(COUNT)
+    dbg.breakpoints.add(0x05)
+    dbg.handle("until 0x08")  # the HLT, past the breakpoint
+    assert not dbg.iss.halted
+    assert dbg.hit_break == 0x05
+    assert dbg.iss.PC == 0x05
+
+
+def test_until_halts_when_the_target_is_never_reached():
+    dbg, logs = build(COUNT)
+    dbg.handle("until 0x40")  # no such address: runs down to the HLT
+    assert dbg.iss.halted
+    assert any("(halted after" in line for line in logs)
+
+
+def test_until_without_argument_prints_the_usage():
+    dbg, logs = build(COUNT)
+    dbg.handle("until")
+    assert any("usage: until <address|label>" in line for line in logs)
+
+
 def test_simbolos_junto_a_las_direcciones():
     dbg, logs = build(COUNT)
     dbg.handle("break loop")

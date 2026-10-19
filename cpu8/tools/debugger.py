@@ -194,6 +194,33 @@ class Debugger:
                 self._step_one()
         self.out(self.state())
 
+    def cmd_until(self, target: int) -> None:
+        """Runs until the PC reaches ``target`` (or HLT / a breakpoint / the limit).
+
+        Always steps at least once, so ``until loop`` from the loop head stops
+        on the *next* visit, not on the current one.
+        """
+        limit = self.max_steps
+        self.hit_break = None
+        steps = 0
+        while not self.iss.halted and steps < limit:
+            self._step_one()
+            steps += 1
+            if self.iss.PC == target:
+                break
+            if self.iss.PC in self.breakpoints:
+                self.hit_break = self.iss.PC
+                break
+        if self.iss.PC == target:
+            self.out(f"(reached 0x{target:02X}{self._sym(target)} after {steps} instructions)")
+        elif self.iss.halted:
+            self.out(f"(halted after {self.retired} instructions)")
+        elif self.hit_break is not None:
+            self.out(f"(breakpoint at 0x{self.hit_break:02X}{self._sym(self.hit_break)})")
+        else:
+            self.out(f"(stopped at the step limit: {limit})")
+        self.out(self.state())
+
     def run(self, max_steps: int | None = None) -> None:
         """Runs until a breakpoint, HLT or the step limit."""
         limit = self.max_steps if max_steps is None else max_steps
@@ -277,6 +304,11 @@ class Debugger:
             self.next(int(args[0], 0) if args else 1)
         elif cmd in ("c", "cont", "continue", "r", "run"):
             self.run()
+        elif cmd in ("u", "until"):
+            if not args:
+                self.out("usage: until <address|label>")
+            else:
+                self.cmd_until(_to_int(args[0], self.labels) & 0xFF)
         elif cmd in ("b", "break"):
             if not args:
                 self.out("usage: break <address|label>")
@@ -376,6 +408,7 @@ commands:
   s, step [n]        run n instructions (default 1)
   n, next [n]        like step, but steps over a CALL
   c, continue        run until a breakpoint, HLT or the step limit
+  u, until <addr>    run until the PC reaches an address or label
   b, break <addr>    set a breakpoint (address, label or L_xxxx)
   d, delete <addr>   remove a breakpoint        clear   remove all
   bl, breakpoints    list the breakpoints (with their symbol, if any)

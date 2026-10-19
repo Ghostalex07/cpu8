@@ -32,12 +32,24 @@ The project does not publish numbered releases yet, so changes are grouped under
   annotated with its `.asm` label (breakpoint confirmations, `bl`, the `PC=` in
   `regs` and the `trace` rows); `break <label>`, `disasm <label>` and
   `watch @label` already resolved symbols.
+- **Debugger `until`** (`cpu8/tools/debugger.py`): `until <address|label>` runs
+  the program until the PC reaches that address again (at least one instruction
+  is always executed, so `until loop` from the loop head stops on the next
+  iteration); it also stops on `HLT`, on a breakpoint or at the step limit, and
+  accepts `u` as a short form.
+- **`programs/logic.asm` demo**: exercises the bitwise group (`OR`, `XOR`) and the
+  shifts (`SHL`, `SHR`) plus `ROL`/`ROR` *through the carry* flag, which until now
+  were only reached by the ALU unit tests. 15 outputs with their `.ref` and golden
+  trace; the line coverage of `make coverage` rises to 98.6 %.
 - **RTL coverage with Verilator** (`make coverage`): builds a separate
-  instrumented model (`--coverage`, `-Wno-COVERIGN`), runs every demo program
-  with `+verilator+coverage+file+` and merges the runs into an annotated report
-  under `build/verilator-cov/` (line, toggle, branch, expression and FSM-state
-  coverage). `tb/verilator/sim_main.cpp` writes the coverage file at exit when
-  built with coverage (guarded by `VM_COVERAGE`).
+  instrumented model (`--coverage`; `-Wno-COVERIGN` is added only when the
+  installed Verilator understands it), runs every demo program with `+cov=<file>`
+  and merges the runs into an annotated report under `build/verilator-cov/`
+  (line, toggle, branch, expression and FSM-state coverage).
+  `tb/verilator/sim_main.cpp` writes the coverage file at exit when built with
+  coverage (guarded by `VM_COVERAGE`); it uses its own `+cov=` plusarg because
+  Verilator <= 5.020 rejects `+verilator+coverage+file+` as an unknown runtime
+  argument.
 - **FPGA timing/area check in CI**: a dedicated `fpga` GitHub Actions job installs
   the pinned YoWASP iCE40 toolchain (yosys 0.69 / nextpnr 0.11, which is what the
   design is calibrated with — the distro nextpnr 0.6 places the design at 11.35 MHz
@@ -46,6 +58,12 @@ The project does not publish numbered releases yet, so changes are grouped under
   80 % of the logic cells or misses the 12 MHz timing target (currently 823/1280
   LCs, ~14 MHz). `make fpga-check` runs the same check locally. The Makefile now
   also finds `nextpnr-ice40` and `icepack` from YoWASP on the `PATH`.
+- **CI caching and artefacts**: pip caching keyed on
+  `.github/requirements-ci.txt` / `.github/requirements-fpga.txt` so the FPGA job
+  no longer re-downloads the ~85 MB YoWASP toolchain on every run; a failing
+  `fpga` job uploads its `build/fpga.log`, and an informational, non-blocking
+  `coverage` job publishes the annotated RTL coverage report as an artefact. The
+  workflow also cancels superseded runs on non-`main` branches.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).

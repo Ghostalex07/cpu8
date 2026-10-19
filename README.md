@@ -177,7 +177,8 @@ The project relies on several layers of checking, all runnable locally:
   sequence and final RAM). This proves the RTL is *correct*, not merely *stable*.
   The interrupt path is covered too.
 - **Interactive debugger** (`tools/debugger.py`): steps a program on the ISS with
-  breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly that
+  breakpoints, watchpoints, `until <label>` (run to the next visit of an
+  address), register/memory dumps and on-the-fly disassembly that
   shows the `.asm` symbols (labels work as breakpoints and appear next to every
   address), and reports a cycle count that models the `control.v` FSM
   (`make debug PROG=programs/<name>`).
@@ -188,8 +189,9 @@ The project relies on several layers of checking, all runnable locally:
   over the Python code).
 
 All of it runs in **GitHub Actions** on every push and *pull request*
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)); a separate job
-synthesizes the FPGA design and enforces the area/timing budget.
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): one job runs the test
+suite, another synthesizes the FPGA design and enforces the area/timing budget,
+and an informational job publishes the RTL coverage report.
 
 ---
 

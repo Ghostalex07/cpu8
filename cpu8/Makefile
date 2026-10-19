@@ -222,8 +222,15 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 ## Builds a SEPARATE instrumented model (--coverage), runs the demo programs
 ## writing one .dat per run and then merges everything into an annotated
 ## report: build/verilator-cov/coverage.info and build/verilator-cov/report/.
+# -Wno-COVERIGN only exists in recent Verilators: the distro's 5.020 (Ubuntu
+# 24.04) errors out on the unknown warning.  Probe for it so `make coverage`
+# also builds with the older toolchain used by the CI job.
+COV_FLAG = $(shell $(VERILATOR) -Wno-COVERIGN --version >/dev/null 2>&1 && echo -Wno-COVERIGN)
+# The dump path is passed with our own +cov= plusarg: Verilator <= 5.020 does
+# not know +verilator+coverage+file+ and aborts on unknown runtime arguments.
+
 $(COV_DIR)/Vcpu_sim: $(TB_DIR)/verilator/sim_main.cpp $(TB_DIR)/verilator/cpu_sim.v $(RTL_DIR)/*.v
-	$(VERILATOR) --cc --exe --build -j -O3 --coverage -Wno-COVERIGN \
+	$(VERILATOR) --cc --exe --build -j -O3 --coverage $(COV_FLAG) \
 	  --top-module cpu_sim -Wno-UNOPTFLAT \
 	  -Mdir $(COV_DIR) \
 	  $(CURDIR)/$(TB_DIR)/verilator/sim_main.cpp $(CURDIR)/$(TB_DIR)/verilator/cpu_sim.v $(CURDIR)/$(RTL_DIR)/*.v
@@ -236,16 +243,16 @@ coverage: dirs $(COV_DIR)/Vcpu_sim
 	  $(PYTHON) $(ASM_DIR)/assembler.py $$p; \
 	  if [ -f $$base.ref ]; then \
 	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref \
-	      +verilator+coverage+file+$(COV_DIR)/cov_$$name.dat >/dev/null; \
+	      +cov=$(COV_DIR)/cov_$$name.dat >/dev/null; \
 	  else \
 	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex \
-	      +verilator+coverage+file+$(COV_DIR)/cov_$$name.dat >/dev/null; \
+	      +cov=$(COV_DIR)/cov_$$name.dat >/dev/null; \
 	  fi; \
 	done; \
 	echo "=== coverage: irq ==="; \
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
 	$(COV_DIR)/Vcpu_sim +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref +irq=1 \
-	  +verilator+coverage+file+$(COV_DIR)/cov_irq.dat >/dev/null; \
+	  +cov=$(COV_DIR)/cov_irq.dat >/dev/null; \
 	echo "=== coverage: merge + annotated report ==="; \
 	$(VERILATOR_COVERAGE) -write-info $(COV_DIR)/coverage.info $(COV_DIR)/cov_*.dat; \
 	$(VERILATOR_COVERAGE) -annotate $(COV_DIR)/report $(COV_DIR)/cov_*.dat; \
