@@ -100,7 +100,7 @@ that case the `rd`/`rs` bits of the first byte are used according to the table.
 | `C`      | JMP/CALL a | 2     | `1100 00 kk` (kk=00/01)    | `a`         | `kk=00` JMP: `PC←a`; `kk=01` CALL: `push(PC)`, `PC←a` (§10.3). |
 | `D`      | Jcc a      | 2     | `1101 ff cc` (ff=family)   | `a`         | conditional branch: family `ff` and condition `cc` (see §4). |
 | `E`      | OUT rd / IN rd | 1 | `1110 rr kk` (kk=00/01)    | —           | `kk=00` OUT: port 0 ← `rd`; `kk=01` IN: `rd` ← port 0 (§10.9). |
-| `F`      | System/memory group | 1–2 | `1111 dddd` (subcode) | (per subtype) | `HLT`, `RET`, `EI`, `DI`, indirect `LD/ST`, `MUL`/`DIV`, `OUT n,rd`/`IN n,rd` (§10.4, §10.5, §10.8, §10.9). |
+| `F`      | System/memory group | 1–3 | `1111 dddd` (subcode) | (per subtype) | `HLT`, `RET`, `EI`, `DI`, indirect `LD/ST`, `MUL`/`DIV`, `OUT n,rd`/`IN n,rd` (§10.4, §10.5, §10.8, §10.9) and the `0xFA` **prefix** for the extended instructions (§10.10). |
 
 `rr` = `rd` index, `ss` = `rs` index, `oo` = sub-operation, `dddd` = subcode.
 `imm`/`a` = 8 bits.
@@ -186,6 +186,13 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 - **SHR**: `C` = bit 0 **before** the shift (the bit shifted out to the right).
 - **MUL rd,rs**: `C = 1` if the product does not fit in 8 bits (high byte ≠ 0); `V = 0`.
 - **DIV rd,rs**: `C = 1` if the divisor was 0 (and then `rd = 0`); `V = 0`.
+- **NEG rd** (§10.10): `C = 1` if the operand was `0` (otherwise `0`); `V` = signed overflow (`rd = 0x80`).
+- **NOT rd** (§10.10): `C = 0`, `V = 0`.
+- **ADC rd,rs** (§10.10): like ADD but adds the carry in: `rd' = rd + rs + C`; `C = 1` if the sum ≥ 256.
+- **SBC rd,rs** (§10.10): like SUB but subtracts the borrow: `rd' = rd - rs - C`; `C = 0` if there was a borrow.
+- **ROL / ROR rd** (§10.10): `C` = the bit rotated out (`rd[7]` for ROL, `rd[0]` for ROR).
+- **SWAP / XCHG rd,rs** (§10.10): do **not** modify flags.
+- **LDW / STW rd,[rs+off]** (§10.10): only update `C` (bit 8 of the computed 9-bit address).
 - **LDI / MOV / LD / ST / OUT / IN / NOP / JMP / Jcc / HLT / PUSH / POP / CALL / RET / EI / DI**: do **not** modify flags.
 
 ### The Z and N flags
@@ -193,7 +200,8 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 - `Z = 1` if the result of the flag-setting operation is `0x00`.
 - `N = result[7]` (copy of the MSB).
 - **Only** these instructions update flags: **ADD, ADDI, SUB, SUBI, AND, OR, XOR,
-  CMP, CMPI, SHL, SHR, MUL, DIV**, and also **INC**/**DEC** (they change `Z`, `N`
+  CMP, CMPI, SHL, SHR, MUL, DIV** and **NEG, NOT, ADC, SBC, ROL, ROR** (§10.10),
+  and also **INC**/**DEC** (they change `Z`, `N`
   and `V` but **not** `C`).
   In **SHL/SHR**, `Z` and `N` are recomputed on the shifted value and `C` holds the
   bit shifted out (see above). Loads (`LDI/MOV/LD`) do **not** touch the flags.
@@ -311,13 +319,20 @@ make sim  PROG=programs/demo                          # assemble and simulate
 - **Indexed** `LD`/`ST` (base + offset, Phase 8): `LD A, [B+3]` = `A ← RAM[B+3]`;
   `ST A, [C+table]`. The base must be `B`, `C` or `D` (with `A` the absolute mode
   would be used); the offset accepts a sign (`[B-1]`) and labels.
+- **16-bit indexed** `LDW`/`STW` (Phase 12, prefix `0xFA`): `LDW A, [B+3]`,
+  `STW C, [D+4]`. Any register can be the base and the 9-bit sum's bit 8 goes to
+  `C` (see §10.10).
 - Immediates with the ALU (Phase 8): `ADDI`, `SUBI`, `CMPI` (e.g. `ADDI A, 5`).
+- Extended ALU ops (Phase 12, §10.10): `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`,
+  `ROL`, `ROR`.
 
 **Accepted mnemonics**: `NOP`, `LDI`, `ADDI`, `SUBI`, `CMPI`, `MOV`, `LD`, `ST`,
 `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV`, `IN`, `OUT`,
 `INC`, `DEC`, `PUSH`, `POP`, `JMP`, `CALL`, `RET`, `JZ`, `JNZ`, `JC`, `JNC`, `JHS`,
-`JLO`, `JLT`, `JGE`, `JLE`, `JGT`, `JVS`, `JVC`, `JMI`, `JPL`, `EI`, `DI`, `HLT`.
-(`NOP` is encoded as `MOV A,A` = `0x20`; `JHS`/`JLO` are aliases of `JC`/`JNC`, see §4.)
+`JLO`, `JLT`, `JGE`, `JLE`, `JGT`, `JVS`, `JVC`, `JMI`, `JPL`, `EI`, `DI`, `HLT`,
+`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `XCHG`, `ROL`, `ROR`, `LDW`, `STW`.
+(`NOP` is encoded as `MOV A,A` = `0x20`; `JHS`/`JLO` are aliases of `JC`/`JNC`, see §4;
+`XCHG` is an alias of `SWAP`, see §10.10.)
 
 **Directives** (start with `.`, case-insensitive; Phase 9)
 
@@ -347,7 +362,9 @@ accepted; commas inside the quotes do not separate fields.
    be used even if defined further down).
 1. *Pass 1*: walks the source and assigns each label its address. To do so it needs
    the size of each instruction: **2 bytes** for `LDI`, `ADDI`, `SUBI`, `CMPI`,
-   `LD`/`ST` (direct, indirect and indexed), `JMP`, `CALL`, `MUL`, `DIV` and `Jcc`;
+   `LD`/`ST` (direct, indirect and indexed), `JMP`, `CALL`, `MUL`, `DIV`, `Jcc`
+   and the 2-byte prefixed instructions (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`,
+   `XCHG`, `ROL`, `ROR`); **3 bytes** for `LDW`/`STW`;
    **1 byte** for the rest (`OUT`/`IN` are 1 byte in their register form and 2 in
    the ported `OUT n, rd`/`IN n, rd`); `.org` sets the PC and `.db` contributes as
    many bytes as it has items.
@@ -381,6 +398,7 @@ In `programs/` there are several example programs written by hand with the ISA:
 | `primes.asm`    | Primes below 32 by trial division with `DIV`/`MUL`             | `02 03 05 07 0B 0D 11 13 17 1D 1F` (hex) |
 | `sort.asm`      | Sorts an array with bubble sort; the data is declared with the `.db` directive | `01 02 03 05 08 09` (hex) |
 | `irq.asm`       | Interrupt: `EI`, counter 0..9 and a handler that counts to 1 (Phase 7.5) | `0 1 2 3 4 5 6 7 8 9 1`                 |
+| `extensions3.asm` | Prefix `0xFA`: `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR` and the 16-bit `LDW`/`STW` (Phase 12) | `FB 04 10 11 FF 01 1E 1F 02 05 00 80 34 12 77 88 99 99 C1 C2` (hex) |
 
 **How they are verified.** Each program has a sibling file `programs/<name>.ref`
 with the list of expected outputs in hexadecimal (one value per line, no
@@ -573,3 +591,49 @@ the environment knows which port it must present on `in_data`, the CPU also driv
 E.g.: `OUT A`=`E0`, `IN A`=`E1`, `OUT 2, B`=`F8 06`, `IN 3, D`=`F9 0F`.
 Example program: `programs/inout.asm` (the testbench presents `0x10+n` on
 `in_data` for port `n`).
+
+### 10.10 Extended instructions (Phase 12, prefix `0xFA`)
+
+The byte `0xFA` is a **prefix**: it selects an *extended operation* that is
+carried in the next byte. This keeps the base ISA — and therefore every
+existing `.hex` — byte-identical, while new instructions are added additively.
+A prefixed instruction is **2 bytes**, or **3** for `LDW`/`STW`:
+
+| Byte | Content |
+|------|---------|
+| 1 | `0xFA` (prefix) |
+| 2 | `(xop << 4) \| (rd << 2) \| rs` — the extended sub-operation `xop` plus up to two register indices |
+| 3 | the displacement `off` (only for `LDW`/`STW`) |
+
+The sub-operations (`xop`) are:
+
+| `xop` | Mnemonic | Bytes | Operands | Effect |
+|-------|----------|-------|----------|--------|
+| `0x0` | `NEG rd` | 2 | `rd` | `rd ← 0 - rd` (`Z C N V`). |
+| `0x1` | `NOT rd` | 2 | `rd` | `rd ← ~rd` (`Z N`; `C=0`, `V=0`). |
+| `0x2` | `ADC rd,rs` | 2 | `rd`, `rs` | `rd ← rd + rs + C` (`Z C N V`). |
+| `0x3` | `SBC rd,rs` | 2 | `rd`, `rs` | `rd ← rd - rs - C` (`Z C N V`). |
+| `0x4` | `SWAP rd,rs` (alias `XCHG`) | 2 | `rd`, `rs` | exchange `rd` and `rs` (no flags). |
+| `0x5` | `ROL rd` | 2 | `rd` | rotate left through `C`: `rd ← {rd[6:0], C}`; `C ← rd[7]`. |
+| `0x6` | `ROR rd` | 2 | `rd` | rotate right through `C`: `rd ← {C, rd[7:1]}`; `C ← rd[0]`. |
+| `0x7` | `LDW rd,[rs+off]` | 3 | `rd`, `rs`, `off` | 9-bit `EA = rs + off`; `rd ← RAM[EA[7:0]]`; `C ← EA[8]`. |
+| `0x8` | `STW rd,[rs+off]` | 3 | `rd`, `rs`, `off` | 9-bit `EA = rs + off`; `RAM[EA[7:0]] ← rd`; `C ← EA[8]`. |
+| `0x9`..`0xF` | — | 2 | — | **reserved** (2-byte no-op). |
+
+Unlike the base indexed `LD/ST rd,[rs+off]`, the base register of `LDW`/`STW` may
+be **any** register (`A`–`D`) and the sum is computed with **9 bits**: bit 8 is
+delivered to `C`, which lets a 16-bit pointer be walked one page at a time
+(`page ← page + carry`).
+
+`ADC`/`SBC` reuse the adder (they share one ALU operation, selected by the `sh`
+bit); likewise `ROL`/`ROR` share a rotate-through-carry unit.
+
+Hardware (see `docs/ARCHITECTURE.md`): the FSM gains an `S_OPR2` state that
+fetches the 3rd byte, `cpu.v` keeps byte 2 of the prefix in an `xop` register,
+the register file has a **second write port** (so `SWAP` writes both registers in
+the same cycle) and the RAM address can be taken from the ALU result (the 9-bit
+`EA` of `LDW`/`STW`).
+
+E.g.: `NEG A`=`FA 00`, `ADC A,B`=`FA 21`, `SWAP A,C`=`FA 42`, `ROL D`=`FA 5C`,
+`LDW A,[B+3]`=`FA 71 03`, `STW C,[D+4]`=`FA 8B 04`.
+Example program: `programs/extensions3.asm`.

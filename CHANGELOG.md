@@ -8,6 +8,13 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Added
 
+- **Extended ISA with the `0xFA` prefix** (`cpu8/docs/ISA.md` §10.10): `NEG`,
+  `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR` (2 bytes) and the 16-bit
+  indexed `LDW`/`STW` (3 bytes), all additive and backward compatible. The RTL
+  gains an `S_OPR2` FSM state, an `xop` register, a `cin` ALU input and a second
+  register-file write port; the assembler, disassembler, ISS, ISA table, tests and
+  a new demo `programs/extensions3.asm` cover them. Every existing `.hex` stays
+  byte-identical.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).
@@ -46,13 +53,15 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 Throughout development, the project grew in phases:
 
-- The **RTL**: datapath, ALU built on a single 9-bit adder, 5-state control FSM,
+- The **RTL**: datapath, ALU built on a single 9-bit adder, control FSM (6 states),
   register file, program counter and unified memory.
 - The two-pass **assembler** and the **disassembler** (exact *round-trip*).
 - **Stack and subroutines** (`PUSH`/`POP`, `CALL`/`RET`) and **interrupts**
   (`EI`/`DI`, configurable vector).
 - **Indexed and indirect addressing** and **flag V** with signed branches.
 - **Hardware `MUL`/`DIV`** and **port I/O** (`IN`/`OUT`).
+- **Extended instructions** behind the `0xFA` prefix (`NEG`/`NOT`/`ADC`/`SBC`/
+  `SWAP`/`ROL`/`ROR` and 16-bit `LDW`/`STW`).
 - The **FPGA synthesis flow** for iCEstick (iCE40HX1K).
 - The **verification tools**: trace *debugger*, regression *harness* and
   differential RTL-vs-model *fuzzing*.

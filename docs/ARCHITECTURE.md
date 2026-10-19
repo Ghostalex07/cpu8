@@ -17,10 +17,10 @@ CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unifie
 The datapath lives mainly in `rtl/cpu.v`. Key elements:
 
 - **PC** (`rtl/pc.v`): synchronous program counter. Supports `reset`, `inc`, `load`. It is loaded with the jump/RET/IRQ address.
-- **Regfile** (`rtl/regfile.v`): bank with 4 registers A,B,C,D. 2 combinational read ports, 1 synchronous write port with `we`.
-- **ALU** (`rtl/alu.v`): combinational arithmetic-logic unit. Produces the result and the `Z`, `C`, `N`, `V` flags.
+- **Regfile** (`rtl/regfile.v`): bank with 4 registers A,B,C,D. 2 combinational read ports, **2** synchronous write ports with `we`/`we2` (the second one is used by `SWAP rd,rs` to write both registers in the same cycle).
+- **ALU** (`rtl/alu.v`): combinational arithmetic-logic unit. Produces the result and the `Z`, `C`, `N`, `V` flags. It has a `cin` input (the carry/borrow for `ADC`/`SBC` and the bit rotated in by `ROL`/`ROR`, wired to flag `C`).
 - **RAM** (`rtl/ram.v`): 256x8 memory. **Synchronous** write with `we` and read **registered on the falling edge** (`mem[addr] → rdata`). Because the data is available mid-cycle, the datapath (which registers on `posedge`) sees it in the same cycle, while the memory can be mapped to **BRAM** (SB_RAM40_4K) instead of distributed logic. Supports `$readmemh` in simulation and initialization for FPGA synthesis.
-- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports).
+- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `xop` (byte 2 of a prefixed `0xFA` instruction, i.e. the extended opcode + register indices), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports).
 - **Buses**: `addr`, `data_in`, `data_out`, control signals from `control.v`.
 
 ## Control unit (FSM)
@@ -32,8 +32,9 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 | State | Name | Description |
 |---|---|---|
 | `0` | `FETCH` | Read the instruction from `ram[PC]` → load `IR`. Increment `PC`. Decide the length from the fetched byte: 1 byte → `EXEC`, 2 bytes → `OPR`. If `I=1` and `irq=1`, go to `IRQ`. |
-| `1` | `OPR` | Read the operand from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. |
-| `2` | `EXEC` | Execute the operation according to the decode (move data, ALU, branches, stack, I/O). Update flags/registers/RAM as appropriate. |
+| `1` | `OPR` | Read the operand from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. For a prefixed (`0xFA`) instruction this byte is the extended opcode → load `xop`; if its sub-operation is `LDW`/`STW` (7/8) go to `OPR2`, otherwise to `EXEC`. |
+| `5` | `OPR2` | Read the 3rd byte (the displacement of `LDW`/`STW`) from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. |
+| `2` | `EXEC` | Execute the operation according to the decode (move data, ALU, branches, stack, I/O). Update flags/registers/RAM as appropriate. For prefixed instructions the sub-operation `xop[7:4]` selects the operation and `xop[3:2]`/`xop[1:0]` are the `rd`/`rs` indices. |
 | `3` | `IRQ` | Handle the interrupt: save PC on the stack (PUSH), clear `I`, jump to `IRQ_VECTOR`. Return to FETCH. |
 | `4` | `HLT` | Halted state. The CPU stays in HLT until `reset`. |
 
@@ -52,8 +53,14 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 
 1. **FETCH**: `IR = RAM[PC]; PC = PC+1`; decide the length (1 byte → `EXEC`, 2 bytes → `OPR`)
 2. **OPR** (if 2 bytes): `operand = RAM[PC]; PC = PC+1`
-3. **EXEC**: perform the operation, write the results, update the flags
-4. The next cycle returns to **FETCH**
+   - if the instruction was the prefix `0xFA`, this byte is the extended opcode (`xop`); `LDW`/`STW` additionally go through `OPR2`
+3. **OPR2** (only for a 3-byte prefixed `LDW`/`STW`): `operand = RAM[PC]; PC = PC+1`
+4. **EXEC**: perform the operation, write the results, update the flags
+5. The next cycle returns to **FETCH**
+
+Cycle counts: **2** for 1-byte instructions (`FETCH + EXEC`), **3** for 2-byte ones
+(`FETCH + OPR + EXEC`) and **4** for the 3-byte `LDW`/`STW`
+(`FETCH + OPR + OPR2 + EXEC`); an interrupt adds the `IRQ` cycle.
 
 ## ALU
 
@@ -64,10 +71,12 @@ Implemented in `rtl/alu.v`. Flags:
 - **C (Carry)**: carry/borrow out of the 8-bit add/subtract depending on the operation
 - **V (Overflow)**: **signed** overflow (two's complement); only for ADD/ADDI/SUB/SUBI/CMP/CMPI and INC/DEC
 
-Supported operations: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV` (`MUL`/`DIV` in phase 9).
+Supported operations: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV` (`MUL`/`DIV` in phase 9) and, from phase 12, `NEG`, `NOT`, `ADC`, `SBC`, `ROL`, `ROR` (see `docs/ISA.md` §10.10). `ADC`/`SBC` share one operation selected by `sh`, and so do `ROL`/`ROR`; `cin` feeds the carry/borrow (or the bit rotated in).
 
 > `CMP` is a subtraction that does not store the result (it only updates flags).
 > `N` and `V` implement the signed comparisons (`JLT/JGE/JLE/JGT`).
+> `NEG` sets `C=1` when the operand is `0`; `NOT` clears `C` and `V`; `ROL`/`ROR`
+> put the rotated-out bit in `C`; `LDW`/`STW` only touch `C` (bit 8 of the address).
 
 ## Stack and subroutines
 
@@ -93,7 +102,8 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 
 - **Pass 1**: collects labels/symbols
 - **Pass 2**: generates bytes with the encoding from `docs/ISA.md`
-- Supports mnemonics, immediates (`LDI`/`ADDI`/`SUBI`/`CMPI`), registers, direct addressing `[a]`, register-indirect `[r]`, **indexed** `[r+off]`, labels, `;` comments and unsigned branches/signed `Jcc` (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
+- Supports mnemonics, immediates (`LDI`/`ADDI`/`SUBI`/`CMPI`), registers, direct addressing `[a]`, register-indirect `[r]`, **indexed** `[r+off]` (and the 16-bit `LDW`/`STW`), labels, `;` comments, unsigned branches and signed `Jcc` (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
+- Handles the prefixed (`0xFA`) extended instructions, emitting 2 bytes (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR`) or 3 (`LDW`/`STW`)
 - Generates `.hex` with hexadecimal bytes (one instruction per line or sequence)
 
 ## Verification
@@ -126,10 +136,10 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
   the reference model (so it needs no RTL build) with `gdb`-like commands —
   `step`/`next` (which steps *over* a `CALL`), `continue`, `break`, `watch`
   (registers, flags or a memory cell), `mem`, `disasm`, `trace`, `out`, `reset`,
-  `labels`. It also reports cycles: it models the 5-state FSM of `rtl/control.v`
+  `labels`. It also reports cycles: it models the 6-state FSM of `rtl/control.v`
   (`FETCH + EXEC` = 2 cycles for 1-byte instructions, `FETCH + OPR + EXEC` = 3 for
-  2-byte ones, and 1 cycle per interrupt serviced), so it can be used to measure a
-  program's CPI. Usage: `make debug PROG=programs/<name>` or
+  2-byte ones, `FETCH + OPR + OPR2 + EXEC` = 4 for the 3-byte `LDW`/`STW`, and
+  1 cycle per interrupt serviced), so it can be used to measure a program's CPI. Usage: `make debug PROG=programs/<name>` or
   `python3 tools/debugger.py programs/<name>.asm`; its tests live in
   `tools/test_debugger.py` (`make pytools`).
 - **Regression harness** (`tools/regress.py`): checks that (1) assembly produces
