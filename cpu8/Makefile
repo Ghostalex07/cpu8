@@ -25,8 +25,8 @@ VERILATOR_COVERAGE ?= $(shell command -v verilator_coverage 2>/dev/null || echo 
 # FPGA flow (Phase 7.6): yosys + nextpnr-ice40 + icepack.  The ones from
 # PATH can be used, or the YoWASP packages (pip install yowasp-yosys yowasp-nextpnr-ice40).
 YOSYS    ?= $(shell command -v yosys 2>/dev/null || command -v yowasp-yosys 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys)
-NEXTPNR  ?= $(shell command -v nextpnr-ice40 2>/dev/null || echo $(HOME)/.local/bin/yowasp-nextpnr-ice40)
-ICEPACK  ?= $(shell command -v icepack 2>/dev/null || echo $(HOME)/.local/bin/yowasp-icepack)
+NEXTPNR  ?= $(shell command -v nextpnr-ice40 2>/dev/null || command -v yowasp-nextpnr-ice40 2>/dev/null || echo $(HOME)/.local/bin/yowasp-nextpnr-ice40)
+ICEPACK  ?= $(shell command -v icepack 2>/dev/null || command -v yowasp-icepack 2>/dev/null || echo $(HOME)/.local/bin/yowasp-icepack)
 
 IVFLAGS  ?= -g2012 -Wall
 

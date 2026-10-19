@@ -9,8 +9,10 @@ Requirements:
 
 - `iverilog` + `vvp` (simulation)
 - `python3` (≥ 3.10) with `pytest` and `ruff`
-- Optional: `verilator` (co-simulation) and
-  `yosys` + `nextpnr-ice40` + `icepack` (FPGA synthesis)
+- Optional: `verilator` (co-simulation) and the FPGA tools (FPGA synthesis):
+  `yosys` + `nextpnr-ice40` + `fpga-icestorm` on Debian/Ubuntu (the
+  `fpga-icestorm` package is the one providing `icepack`), or
+  `pip install yowasp-yosys yowasp-nextpnr-ice40`
 
 ```bash
 git clone https://github.com/Ghostalex07/cpu8.git

@@ -78,10 +78,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install iCE40 toolchain
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      # The distro toolchain is not used here on purpose: nextpnr 0.6 (Ubuntu
+      # 24.04) places the design at 11.35 MHz, below the 12 MHz target, and then
+      # exits with an error.  The YoWASP wheels carry the same yosys/nextpnr
+      # (0.70 / 0.11) the design is calibrated against, so the budget check is
+      # meaningful.  The versions are pinned to keep the check reproducible;
+      # bump them deliberately when a new release is known to still fit.
+      - name: Install iCE40 toolchain (YoWASP)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y yosys nextpnr-ice40 icestorm
+          python3 -m pip install --quiet \
+            'yowasp-yosys==0.69.0.0.post1233' \
+            'yowasp-nextpnr-ice40==0.11.1.0.post826'
+          yowasp-yosys -V
+          yowasp-nextpnr-ice40 --version
 
       - name: Synthesize, place and route (iCE40HX1K)
         run: |

@@ -45,8 +45,13 @@ can run entirely **without hardware**, using `iverilog` and/or `verilator`.
 ## Quick start
 
 **Requirements**: `iverilog` + `vvp`, `python3` (≥ 3.10), `pytest` and `ruff`.
-Optional: `verilator` (co-simulation) and `yosys` + `nextpnr-ice40` + `icepack`
-(FPGA synthesis).
+Optional: `verilator` (co-simulation) and the FPGA tools (FPGA synthesis). The
+FPGA flow looks for `yosys`, `nextpnr-ice40` and `icepack` on the `PATH` and
+falls back to the YoWASP wheels, so either install the distro packages (on
+Debian/Ubuntu: `yosys`, `nextpnr-ice40` and `fpga-icestorm`, which is the one
+that provides `icepack`) or `pip install yowasp-yosys yowasp-nextpnr-ice40`.
+Note that the budget in `make fpga-check` was calibrated with the YoWASP
+(yosys 0.69 / nextpnr 0.11) tools, the same ones CI pins.
 
 Everything runs from the `cpu8/` folder:
 
@@ -162,7 +167,9 @@ The project relies on several layers of checking, all runnable locally:
 - **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
   bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
   job — fails if the design outgrows the area budget or misses the 12 MHz timing
-  target (`tools/fpga_report.py`).
+  target (`tools/fpga_report.py`). The job installs the pinned YoWASP wheels
+  instead of the distro packages: nextpnr 0.6 places the design at 11.35 MHz and
+  then aborts, so the area/timing budget would not be comparable.
 - **Reference model (ISS)**: `tools/iss.py` implements the ISA in Python. The
   **differential fuzzing** (`make difftest`, `tools/difftest.py` +
   `tb/cpu_dump_tb.v`) runs each program on the RTL and on the ISS and compares the

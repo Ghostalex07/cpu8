@@ -39,10 +39,13 @@ The project does not publish numbered releases yet, so changes are grouped under
   coverage). `tb/verilator/sim_main.cpp` writes the coverage file at exit when
   built with coverage (guarded by `VM_COVERAGE`).
 - **FPGA timing/area check in CI**: a dedicated `fpga` GitHub Actions job installs
-  the iCE40 toolchain, runs `make fpga` on the iCE40HX1K and then
-  `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds 80 %
-  of the logic cells or misses the 12 MHz timing target (currently 823/1280 LCs,
-  ~14 MHz). `make fpga-check` runs the same check locally.
+  the pinned YoWASP iCE40 toolchain (yosys 0.69 / nextpnr 0.11, which is what the
+  design is calibrated with — the distro nextpnr 0.6 places the design at 11.35 MHz
+  and aborts before the check even runs), runs `make fpga` on the iCE40HX1K and
+  then `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds
+  80 % of the logic cells or misses the 12 MHz timing target (currently 823/1280
+  LCs, ~14 MHz). `make fpga-check` runs the same check locally. The Makefile now
+  also finds `nextpnr-ice40` and `icepack` from YoWASP on the `PATH`.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand
   forms, opcode page, length, bytes, flags and description).
