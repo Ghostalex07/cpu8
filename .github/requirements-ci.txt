@@ -7,6 +7,6 @@
 # toolchain.  Dependabot proposes updates for this file (see
 # .github/dependabot.yml); bump the pins deliberately and run `make fmt` if the
 # formatter changes.
-pytest==9.0.2
-ruff==0.16.1
+pytest==9.1.1
+ruff==0.17.1
 verible==0.0.4071.0
