@@ -200,6 +200,12 @@ difftest: dirs
 	$(PYTHON) $(TOOLS_DIR)/difftest.py --count $(if $(COUNT),$(COUNT),100) \
 	  --seed $(if $(SEED),$(SEED),1) $(if $(filter 1,$(ONLYPROGS)),--progs,)
 
+## Long differential run for the scheduled CI job (10,000 random programs).
+##      make difftest-long COUNT=10000 SEED=7
+difftest-long: dirs
+	$(PYTHON) $(TOOLS_DIR)/difftest.py --count $(if $(COUNT),$(COUNT),10000) \
+	  --seed $(if $(SEED),$(SEED),1)
+
 ## --- Regression harness: bytes + golden traces + round-trip fuzz ---
 regress: dirs
 	$(PYTHON) $(TOOLS_DIR)/regress.py
@@ -338,7 +344,7 @@ clean:
 	rm -rf $(BUILD) $(FORMAL_DIR)/*/ $(FPGA_DIR)/program.hex
 
 .PHONY: all dirs test modtests progtests irqtest asm sim wave trace disasm debug \
-	pytools lint docs docs-check difftest regress regress-update verilator \
+	pytools lint docs docs-check difftest difftest-long regress regress-update verilator \
 	coverage vlint fmt fmt-check fpga fpga-check formal clean help check
 
 ## --- Full local battery: the same as CI runs ---
@@ -364,6 +370,7 @@ help:
 	@echo "make docs                          (regenerates docs/OPCODES.md from the ISA table)"
 	@echo "make docs-check                    (checks that docs/OPCODES.md is up to date)"
 	@echo "make difftest [COUNT=N] [SEED=S]   (differential fuzz: RTL vs reference model)"
+	@echo "make difftest-long [COUNT=N] [SEED=S] (long run for the scheduled CI job)"
 	@echo "make regress                       (regression: bytes + traces + fuzz)"
 	@echo "make regress-update                (regenerates the golden reference)"
 	@echo "make check                         (full battery: the same as CI)"
