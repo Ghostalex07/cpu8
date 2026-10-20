@@ -10,6 +10,9 @@ Two levels:
    compared with its ``programs/*.ref``.  Since those ``.ref`` are verified
    against the RTL (``make test``), the fact that the ISS reproduces them proves
    that the model is faithful.
+3. **Interrupt-enable flag I**: ``EI``/``DI``, the flags byte handled by
+   ``PUSHF``/``POPF``, ``RETI`` restoring only ``C,Z,N,V``, and the gating of a
+   level-high IRQ by ``I``.
 
 Run with ``make pytools`` or ``python3 -m pytest tools/test_iss.py``.
 """
@@ -222,6 +225,142 @@ def test_reti_restaura_banderas_y_no_reactiva_irq() -> None:
     m = iss.ISS(programa, irq_at=0, irq_vector=0x10)
     m.run(200)
     assert [v for v, _ in m.outs] == [1, 0, 2, 3]
+
+
+# ---------------------------------------------------------------------------
+#  Interrupt-enable flag I (EI / DI / POPF / RETI / IRQ)
+#
+#  Semantics (docs/ISA.md §10.6 and §10.10):
+#  * I is 0 after reset.  EI sets it and DI clears it; neither changes C/Z/N/V.
+#  * PUSHF packs the flags byte as {0,0,0,I,V,N,Z,C} without changing the
+#    flags; POPF loads C,Z,N,V,I from bits 4..0 (bits 5..7 are ignored).
+#  * An IRQ is serviced only if I=1 at the start of an instruction: the PC is
+#    pushed, C/Z/N/V are saved, I is cleared and the PC jumps to the vector.
+#    RETI restores C/Z/N/V but does not touch I, so after the canonical entry
+#    (I=0) it stays 0 and a still-high level IRQ is not re-taken.
+# ---------------------------------------------------------------------------
+
+
+def test_reset_deja_i_a_cero() -> None:
+    assert iss.ISS().fi == 0
+
+
+def test_ei_activa_i_y_di_lo_desactiva() -> None:
+    assert ejecutar("EI\nHLT").fi == 1
+    assert ejecutar("EI\nDI\nHLT").fi == 0
+
+
+def test_ei_di_no_modifican_banderas() -> None:
+    m = ejecutar("LDI A, 0x00\nCMP A, A\nEI\nDI\nHLT")
+    # CMP A,A: Z=1, C=1 (no borrow), N=0, V=0.
+    assert (m.fc, m.fz, m.fn, m.fv) == (1, 1, 0, 0)
+    assert m.fi == 0
+
+
+def test_popf_carga_banderas_desde_los_bits_0_a_4() -> None:
+    # Bit 4 is I; LDI does not touch the flags, so only POPF can set them here.
+    m = ejecutar("LDI A, 0x10\nPUSH A\nPOPF\nHLT")
+    assert m.fi == 1
+    assert (m.fc, m.fz, m.fn, m.fv) == (0, 0, 0, 0)
+
+    # Bits 0..3 are C,Z,N,V.
+    m = ejecutar("LDI A, 0x0F\nPUSH A\nPOPF\nHLT")
+    assert m.fi == 0
+    assert (m.fc, m.fz, m.fn, m.fv) == (1, 1, 1, 1)
+
+
+def test_popf_limpia_i_e_ignora_los_bits_altos() -> None:
+    m = ejecutar("EI\nLDI A, 0x00\nPUSH A\nPOPF\nHLT")
+    assert m.fi == 0
+
+    # Bits 5..7 are not part of the flags byte: they must be ignored.
+    m = ejecutar("LDI A, 0xE0\nPUSH A\nPOPF\nHLT")
+    assert (m.fc, m.fz, m.fn, m.fv, m.fi) == (0, 0, 0, 0, 0)
+
+
+def test_pushf_empaqueta_i_sin_modificar_banderas() -> None:
+    m = ejecutar("LDI A, 0x00\nCMP A, A\nEI\nPUSHF\nPOP B\nHLT")
+    assert m.regs[1] == 0x13  # {0,0,0,I=1,V=0,N=0,Z=1,C=1}
+    assert (m.fc, m.fz, m.fn, m.fv, m.fi) == (1, 1, 0, 0, 1)
+
+
+def test_reti_restaura_c_z_n_v_y_deja_i_a_cero() -> None:
+    # The interrupted code leaves C=0,Z=0,N=1,V=1 (0x7F+1=0x80); the handler
+    # clobbers them (C=1,Z=1,N=0,V=0) and RETI must bring the original ones
+    # back.  The level IRQ stays high, so a re-entry would be visible too.
+    programa = ensambla_hexa(
+        """
+        LDI A, 0x7F
+        LDI B, 0x01
+        ADD A, B
+        EI
+    loop: JMP loop
+        NOP
+        NOP
+        LDI A, 0x00
+        CMP A, A
+        RETI
+        """
+    )
+    m = iss.ISS(programa, irq_at=0, irq_vector=0x0A)  # handler at 0x0A
+    m.run(20)
+    assert (m.fc, m.fz, m.fn, m.fv) == (0, 0, 1, 1)
+    assert m.fi == 0
+    assert [r[0] for r in m.rows].count(0x0A) == 1
+
+
+def test_irq_con_i_a_cero_queda_pendiente_y_se_atiende_tras_ei() -> None:
+    # IRQ is high from the start, but I=0 while LDI/NOP/NOP retire.  EI sets
+    # I; on the very next instruction the pending IRQ must be taken.
+    programa = ensambla_hexa(
+        """
+        LDI A, 0x00
+        NOP
+        NOP
+        EI
+    loop: OUT A
+        JMP loop
+        NOP
+        NOP
+        LDI A, 0x42
+        RETI
+        """
+    )
+    m = iss.ISS(programa, irq_at=0, irq_vector=0x0A)  # handler at 0x0A
+    m.run(10)
+    pcs = [r[0] for r in m.rows]
+    ei_idx = next(i for i, r in enumerate(m.rows) if r[1] == 0xF2)
+    vector_idx = pcs.index(0x0A)
+    assert 0x0A not in pcs[:ei_idx]  # not taken while I=0
+    assert vector_idx == ei_idx + 1  # ...but still pending after EI
+    assert m.regs[0] == 0x42
+    assert m.fi == 0  # RETI leaves I=0
+
+
+def test_irq_a_nivel_alto_no_se_retoma_tras_reti() -> None:
+    # The handler runs once (irq_at=0 keeps the level high).  With I=0 after
+    # RETI, the main loop must finish its 3 iterations without re-entering it:
+    # output is 1 byte from the handler + 3 from the loop.
+    programa = ensambla_hexa(
+        """
+        LDI D, 3
+        EI
+    loop: OUT A
+        DEC D
+        JNZ loop
+        HLT
+        NOP
+        NOP
+        LDI A, 0x42
+        OUT A
+        RETI
+        """
+    )
+    m = iss.ISS(programa, irq_at=0, irq_vector=0x0A)  # handler at 0x0A
+    m.run(50)
+    assert [v for v, _ in m.outs] == [0x42] * 4
+    assert [r[0] for r in m.rows].count(0x0A) == 1
+    assert m.fi == 0
 
 
 # ---------------------------------------------------------------------------
