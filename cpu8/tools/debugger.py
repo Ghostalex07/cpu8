@@ -22,8 +22,12 @@ Type ``help`` inside the debugger for the list of commands.
 from __future__ import annotations
 
 import argparse
+import operator
+import re
 import sys
+from collections.abc import Callable
 from pathlib import Path
+from typing import cast
 
 _ROOT = Path(__file__).resolve().parent.parent
 for _sub in ("tools", "asm"):
@@ -91,6 +95,191 @@ def _addr(tok: str, labels: dict[str, int]) -> int:
     return value
 
 
+# ---- conditional breakpoints ----------------------------------------------
+# Names accepted in an `if <expr>` clause.  `C` is register C (as in `watch C`);
+# the carry flag is spelled `CF` (the `fC` form of `watch` is accepted too).
+_COND_REGS = {"A": 0, "B": 1, "C": 2, "D": 3}
+_COND_ATTRS = {"SP": "SP", "PC": "PC"}
+_COND_FLAGS = {
+    "CF": "fc",
+    "ZF": "fz",
+    "NF": "fn",
+    "VF": "fv",
+    "IF": "fi",
+    "fC": "fc",
+    "fZ": "fz",
+    "fN": "fn",
+    "fV": "fv",
+    "fI": "fi",
+}
+_CMP_OPS: dict[str, Callable[[int, int], bool]] = {
+    "==": operator.eq,
+    "!=": operator.ne,
+    "<": operator.lt,
+    "<=": operator.le,
+    ">": operator.gt,
+    ">=": operator.ge,
+}
+_NUM_RE = re.compile(r"0[xX][0-9A-Fa-f]+|\d+")
+_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+# Condition AST: ("num", value), ("reg", index), ("attr", name), ("flag", attr),
+# ("mem", addr), ("cmp", op, left, right), ("and", left, right) or
+# ("or", left, right).
+_Node = tuple[object, ...]
+
+
+def _tokenize_condition(text: str) -> list[str]:
+    """Splits a condition into tokens; raises ValueError on an invalid character."""
+    tokens: list[str] = []
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if ch.isspace():
+            i += 1
+            continue
+        pair = text[i : i + 2]
+        if pair in ("&&", "||", "==", "!=", "<=", ">="):
+            tokens.append(pair)
+            i += 2
+            continue
+        match = _NUM_RE.match(text, i) or _IDENT_RE.match(text, i)
+        if match is not None:
+            tokens.append(match.group())
+            i = match.end()
+            continue
+        if ch in "<>()@":
+            tokens.append(ch)
+            i += 1
+            continue
+        raise ValueError(f"invalid character '{ch}' in condition")
+    return tokens
+
+
+class _ConditionParser:
+    """Recursive-descent parser for the (safe, Python-free) condition grammar.
+
+    Precedence, from lowest to highest: ``||``, ``&&``, comparisons, values.
+    Parentheses group sub-expressions.
+    """
+
+    def __init__(self, text: str, labels: dict[str, int]) -> None:
+        self.tokens = _tokenize_condition(text)
+        self.labels = labels
+        self.pos = 0
+
+    def parse(self) -> _Node:
+        if not self.tokens:
+            raise ValueError("empty condition")
+        node = self._or()
+        if self._peek() is not None:
+            raise ValueError(f"unexpected '{self._peek()}' in condition")
+        return node
+
+    def _peek(self) -> str | None:
+        return self.tokens[self.pos] if self.pos < len(self.tokens) else None
+
+    def _take(self) -> str:
+        tok = self._peek()
+        if tok is None:
+            raise ValueError("incomplete condition: expected a value")
+        self.pos += 1
+        return tok
+
+    def _accept(self, tok: str) -> bool:
+        if self._peek() == tok:
+            self.pos += 1
+            return True
+        return False
+
+    def _or(self) -> _Node:
+        node = self._and()
+        while self._accept("||"):
+            node = ("or", node, self._and())
+        return node
+
+    def _and(self) -> _Node:
+        node = self._comparison()
+        while self._accept("&&"):
+            node = ("and", node, self._comparison())
+        return node
+
+    def _comparison(self) -> _Node:
+        node = self._primary()
+        tok = self._peek()
+        if tok in _CMP_OPS:
+            self.pos += 1
+            node = ("cmp", tok, node, self._primary())
+            if self._peek() in _CMP_OPS:
+                raise ValueError("comparison operators cannot be chained")
+        return node
+
+    def _primary(self) -> _Node:
+        tok = self._take()
+        if tok == "(":
+            node = self._or()
+            if not self._accept(")"):
+                raise ValueError("missing ')' in condition")
+            return node
+        if tok == "@":
+            return self._memory()
+        if _NUM_RE.fullmatch(tok):
+            return ("num", _dec(tok))
+        if _IDENT_RE.fullmatch(tok):
+            known = tok in _COND_REGS or tok in _COND_ATTRS or tok in _COND_FLAGS
+            name = tok if known else tok.upper()
+            if name in _COND_REGS:
+                return ("reg", _COND_REGS[name])
+            if name in _COND_ATTRS:
+                return ("attr", _COND_ATTRS[name])
+            if name in _COND_FLAGS:
+                return ("flag", _COND_FLAGS[name])
+            raise ValueError(
+                f"unknown name '{tok}' in condition (use A-D, SP, PC, CF/ZF/NF/VF/IF or @address)"
+            )
+        raise ValueError(f"unexpected '{tok}' in condition")
+
+    def _memory(self) -> _Node:
+        tok = self._peek()
+        if tok is None or not (_NUM_RE.fullmatch(tok) or _IDENT_RE.fullmatch(tok)):
+            raise ValueError("expected an address after '@' in condition")
+        self.pos += 1
+        if _IDENT_RE.fullmatch(tok) and tok not in self.labels:
+            if not tok.upper().startswith("L_"):
+                raise ValueError(f"unknown label '{tok}' in condition")
+        try:
+            addr = _addr(tok, self.labels)
+        except ValueError as e:
+            raise ValueError(f"invalid memory address '@{tok}' in condition: {e}") from e
+        return ("mem", addr)
+
+
+def _eval_condition(node: _Node, dbg: Debugger) -> int:
+    """Evaluates a compiled condition against the current CPU state."""
+    kind = node[0]
+    if kind == "num":
+        return cast(int, node[1])
+    if kind == "reg":
+        return dbg.iss.regs[cast(int, node[1])]
+    if kind == "attr":
+        return cast(int, getattr(dbg.iss, cast(str, node[1])))
+    if kind == "flag":
+        return cast(int, getattr(dbg.iss, cast(str, node[1])))
+    if kind == "mem":
+        return dbg.iss.mem[cast(int, node[1])]
+    if kind == "cmp":
+        left = _eval_condition(cast(_Node, node[2]), dbg)
+        right = _eval_condition(cast(_Node, node[3]), dbg)
+        return int(_CMP_OPS[cast(str, node[1])](left, right))
+    left = _eval_condition(cast(_Node, node[1]), dbg)
+    right = _eval_condition(cast(_Node, node[2]), dbg)
+    if kind == "and":
+        return int(bool(left) and bool(right))
+    if kind == "or":
+        return int(bool(left) or bool(right))
+    raise ValueError(f"invalid compiled condition node {kind!r}")
+
+
 class Debugger:
     """State and command handling of the interactive debugger."""
 
@@ -112,6 +301,10 @@ class Debugger:
         self.max_steps = max_steps
         self.out = out
         self.breakpoints: set[int] = set()
+        # Address -> expression source.  The compiled AST lives in a private
+        # dict so `breakpoints` stays a simple set of addresses.
+        self.conditions: dict[int, str] = {}
+        self._condition_nodes: dict[int, _Node] = {}
         self.watches: dict[str, int] = {}
         self.reset()
 
@@ -180,6 +373,17 @@ class Debugger:
                 self.out(f"watch: {target} {self.watches[target]:02X} -> {val:02X}")
                 self.watches[target] = val
 
+    def _breakpoint_hit(self, addr: int) -> bool:
+        """True when ``addr`` is a breakpoint and its condition (if any) holds.
+
+        Conditions are evaluated here, at the moment the PC reaches the
+        breakpoint, never on every step.
+        """
+        if addr not in self.breakpoints:
+            return False
+        node = self._condition_nodes.get(addr)
+        return node is None or _eval_condition(node, self) != 0
+
     # ---- execution primitives --------------------------------------------
     def step(self, n: int = 1) -> None:
         for _ in range(max(1, n)):
@@ -203,7 +407,7 @@ class Debugger:
                 while (
                     not self.iss.halted
                     and self.iss.PC != ret
-                    and self.iss.PC not in self.breakpoints
+                    and not self._breakpoint_hit(self.iss.PC)
                     and guard < self.max_steps
                 ):
                     self._step_one()
@@ -226,7 +430,7 @@ class Debugger:
             steps += 1
             if self.iss.PC == target:
                 break
-            if self.iss.PC in self.breakpoints:
+            if self._breakpoint_hit(self.iss.PC):
                 self.hit_break = self.iss.PC
                 break
         if self.iss.PC == target:
@@ -246,7 +450,7 @@ class Debugger:
         self.hit_break = None
         steps = 0
         while not self.iss.halted and steps < limit:
-            if self.iss.PC in self.breakpoints and not (steps == 0 and start == self.iss.PC):
+            if not (steps == 0 and start == self.iss.PC) and self._breakpoint_hit(self.iss.PC):
                 self.hit_break = self.iss.PC
                 break
             self._step_one()
@@ -331,23 +535,24 @@ class Debugger:
                 self.cmd_until(_addr(args[0], self.labels))
         elif cmd in ("b", "break"):
             if not args:
-                self.out("usage: break <address|label>")
+                self._list_breakpoints()
+                if not self.breakpoints:
+                    self.out("usage: break <address|label> [if <expression>]")
             else:
-                a = _addr(args[0], self.labels)
-                self.breakpoints.add(a)
-                self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}")
+                self._add_breakpoint(args)
         elif cmd in ("d", "delete"):
             a = _addr(args[0], self.labels)
             self.breakpoints.discard(a)
+            self.conditions.pop(a, None)
+            self._condition_nodes.pop(a, None)
             self.out(f"breakpoint removed at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("clear",):
             self.breakpoints.clear()
+            self.conditions.clear()
+            self._condition_nodes.clear()
             self.out("all breakpoints removed")
         elif cmd in ("bl", "breakpoints"):
-            if not self.breakpoints:
-                self.out("(no breakpoints)")
-            for a in sorted(self.breakpoints):
-                self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}")
+            self._list_breakpoints()
         elif cmd in ("w", "watch"):
             if not args:
                 self._list_watches()
@@ -404,6 +609,38 @@ class Debugger:
             self.out(f"unknown command '{cmd}'; type 'help'")
         return True
 
+    def _add_breakpoint(self, args: list[str]) -> None:
+        """Adds (or replaces) a breakpoint from ``<addr> [if <expr>]`` arguments.
+
+        The condition is parsed before anything is modified, so an invalid
+        expression leaves the breakpoint table untouched.
+        """
+        addr = _addr(args[0], self.labels)
+        if len(args) == 1:
+            self.breakpoints.add(addr)
+            self.conditions.pop(addr, None)
+            self._condition_nodes.pop(addr, None)
+            self.out(f"breakpoint at 0x{addr:02X}{self._sym(addr)}")
+            return
+        if args[1].lower() != "if":
+            raise ValueError("usage: break <address|label> [if <expression>]")
+        source = " ".join(args[2:]).strip()
+        if not source:
+            raise ValueError("missing expression after 'if'")
+        node = _ConditionParser(source, self.labels).parse()
+        self.breakpoints.add(addr)
+        self.conditions[addr] = source
+        self._condition_nodes[addr] = node
+        self.out(f"breakpoint at 0x{addr:02X}{self._sym(addr)} if {source}")
+
+    def _list_breakpoints(self) -> None:
+        if not self.breakpoints:
+            self.out("(no breakpoints)")
+            return
+        for a in sorted(self.breakpoints):
+            cond = f" if {self.conditions[a]}" if a in self.conditions else ""
+            self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}{cond}")
+
     def _add_watch(self, target: str) -> None:
         if not self._valid_target(target):
             self.out(
@@ -436,9 +673,14 @@ commands:
   n, next [n]        like step, but steps over a CALL
   c, continue        run until a breakpoint, HLT or the step limit
   u, until <addr>    run until the PC reaches an address or label
-  b, break <addr>    set a breakpoint (address, label or L_xxxx)
-  d, delete <addr>   remove a breakpoint        clear   remove all
-  bl, breakpoints    list the breakpoints (with their symbol, if any)
+  b, break [addr [if <expr>]]
+                     set a breakpoint (address, label or L_xxxx); without
+                     arguments, list them.  <expr>: A-D/SP/PC, flags
+                     CF/ZF/NF/VF/IF (C is register C), @0xNN/@label (RAM),
+                     literals, == != < <= > >=, && and ||, and parentheses.
+                     e.g. break loop if A == 3 && @0x40 < 0x10
+  d, delete <addr>   remove a breakpoint (and its condition)   clear  all
+  bl, breakpoints    list the breakpoints (with their symbol and condition)
   w, watch <target>  watch a register (A-D/SP/PC/IR/OP), a flag (fZ/fC/fN/fV/fI)
                      or a memory cell (@0x20, @label); no arg lists them
   unwatch <target>   stop watching

@@ -159,6 +159,143 @@ def test_simbolos_junto_a_las_direcciones():
     assert any("(loop)" in line for line in logs)
 
 
+# ---- conditional breakpoints -----------------------------------------------
+def test_conditional_breakpoint_stops_when_the_condition_is_true():
+    dbg, logs = build(COUNT)
+    dbg.handle("break loop if A == 3")
+    assert dbg.breakpoints == {0x04}
+    assert dbg.conditions == {0x04: "A == 3"}
+    dbg.run()
+    assert not dbg.iss.halted
+    assert dbg.hit_break == 0x04
+    assert dbg.iss.regs[0] == 3
+    assert any("0x04 (loop) if A == 3" in line for line in logs)
+
+
+def test_conditional_breakpoint_false_runs_to_hlt():
+    dbg, logs = build(COUNT)
+    dbg.handle("break loop if A == 0")  # A is 3, 2, 1 at the loop head
+    dbg.run()
+    assert dbg.iss.halted
+    assert dbg.hit_break is None
+    assert any("(halted after" in line for line in logs)
+
+
+def test_conditional_breakpoint_false_continues_to_the_next_breakpoint():
+    dbg, _ = build(COUNT)
+    dbg.handle("break loop if A == 0")
+    dbg.handle("break 0x08")  # the HLT
+    dbg.run()
+    assert not dbg.iss.halted
+    assert dbg.hit_break == 0x08
+    assert dbg.iss.PC == 0x08
+
+
+def test_until_stops_on_a_true_conditional_breakpoint():
+    dbg, _ = build(COUNT)
+    dbg.handle("break 0x05 if A == 3")  # first pass: A = 3
+    dbg.handle("until 0x08")
+    assert dbg.hit_break == 0x05
+    assert dbg.iss.PC == 0x05
+
+
+def test_until_continues_past_a_false_conditional_breakpoint():
+    dbg, _ = build(COUNT)
+    dbg.handle("break 0x05 if A == 0")  # A is 3, 2, 1 at 0x05
+    dbg.handle("until 0x08")
+    assert dbg.hit_break is None
+    assert dbg.iss.PC == 0x08
+
+
+def test_next_steps_over_a_call_with_a_false_conditional_breakpoint():
+    src = "LDI A, 1\nCALL sub\nOUT A\nHLT\nsub: ADD A, A\nRET\n"
+    dbg, _ = build(src)
+    dbg.handle("break sub if A == 9")
+    dbg.step()  # LDI
+    dbg.next()  # the condition is false: the CALL runs to its RET
+    assert dbg.iss.PC == 4
+    assert dbg.iss.regs[0] == 2
+
+
+def test_condition_logical_and_has_higher_precedence_than_or():
+    dbg, _ = build(COUNT)
+    # The && binds first: true || (false && false) -> true.
+    dbg.handle("break loop if A == 3 || B == 9 && C == 9")
+    dbg.run()
+    assert dbg.hit_break == 0x04
+
+
+@pytest.mark.parametrize(
+    "expr",
+    ["A ==", "BOGUS == 1", "A == 1 &&", "@0x100 == 0", "A < B < C", "A = 1"],
+)
+def test_invalid_conditions_are_rejected(expr):
+    dbg, logs = build(COUNT)
+    dbg.handle(f"break loop if {expr}")
+    assert dbg.breakpoints == set()
+    assert dbg.conditions == {}
+    assert dbg.last_error
+    assert any(line.startswith("error:") for line in logs)
+
+
+def test_invalid_condition_keeps_the_existing_breakpoint():
+    dbg, _ = build(COUNT)
+    dbg.handle("break loop if A == 3")
+    dbg.handle("break loop if A ==")  # rejected: the old condition survives
+    assert dbg.breakpoints == {0x04}
+    assert dbg.conditions == {0x04: "A == 3"}
+
+
+def test_delete_removes_the_condition_too():
+    dbg, _ = build(COUNT)
+    dbg.handle("break loop if A == 99")
+    assert dbg.conditions == {0x04: "A == 99"}
+    dbg.handle("delete loop")
+    assert dbg.breakpoints == set()
+    assert dbg.conditions == {}
+    dbg.handle("break loop")  # unconditional again, no stale condition
+    assert dbg.conditions == {}
+    dbg.run()
+    assert dbg.hit_break == 0x04
+
+
+def test_break_without_arguments_lists_the_condition():
+    dbg, logs = build(COUNT)
+    dbg.handle("break loop if A == 3")
+    logs.clear()
+    dbg.handle("break")
+    assert any("0x04 (loop) if A == 3" in line for line in logs)
+
+
+@pytest.mark.parametrize(
+    "expr",
+    [
+        "A == 0",
+        "ZF == 1",
+        "CF == 1",  # carry is CF; C is the register below
+        "C == 0",
+        "SP == 0xF0",
+        "PC == 0x05",  # `here` in this fixture program
+        "@0x40 == 0x2A",  # RAM read when the breakpoint is reached
+    ],
+)
+def test_condition_reads_the_current_register_flag_and_memory(expr):
+    source = """\
+        LDI A, 0x2A
+        ST A, [0x40]
+        SUB A, A
+    here:
+        HLT
+    """
+    dbg, _ = build(source)
+    dbg.handle(f"break here if {expr}")
+    assert dbg.conditions[dbg.labels["here"]] == expr
+    assert dbg.iss.mem[0x40] == 0  # still zero when the breakpoint is set
+    dbg.run()
+    assert not dbg.iss.halted
+    assert dbg.hit_break == dbg.labels["here"]
+
+
 def test_state_y_trace_muestran_el_simbolo_de_pc():
     dbg, logs = build(COUNT)
     dbg.step(2)  # PC = 0x04 (loop)
