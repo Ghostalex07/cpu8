@@ -1,0 +1,27 @@
+# Cover check for formal/control_fv.sv.
+#
+# SymbiYosys strips $cover cells in bmc/prove mode, so the reachability of the
+# interesting states/transitions is checked in a separate mode cover run that
+# reuses the same harness.  Depth 12 matches control.sby.
+[options]
+mode cover
+depth 12
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/control.v control_fv.sv
+hierarchy -top control_fv
+proc
+flatten
+# See control.sby: connect the flattened internal state signals to the
+# observation wires used by the assertions/covers.
+cd control_fv
+connect -set state_obs dut.state
+connect -set nstate_obs dut.nstate
+prep -top control_fv
+
+[files]
+rtl/control.v ../rtl/control.v
+control_fv.sv control_fv.sv

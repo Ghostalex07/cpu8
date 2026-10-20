@@ -1,12 +1,21 @@
 [options]
 mode bmc
-depth 1
+depth 12
 
 [engines]
 smtbmc z3
 
 [script]
 read_verilog -formal rtl/control.v control_fv.sv
+hierarchy -top control_fv
+proc
+flatten
+# Yosys cannot reference signals inside a submodule, so after flattening the
+# FSM state and next-state wires (named `dut.state` / `dut.nstate`) are wired
+# to the observation ports used by the assertions.
+cd control_fv
+connect -set state_obs dut.state
+connect -set nstate_obs dut.nstate
 prep -top control_fv
 
 [files]
