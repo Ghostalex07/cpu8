@@ -282,10 +282,10 @@ vlint:
 	$(VERILATOR) --lint-only -Wall --top-module cpu $(RTL_DIR)/*.v
 
 ## --- Verilog formatting (Phase 12e, opt-in) ---
-## `make fmt` rewrites the sources in place with Verible; `make fmt-check` only
-## reports the files that would change (exit status 1).  Run `make fmt` before
-## sending a patch, never in the middle of an unrelated change: the RTL predates
-## the formatter and a full run touches every file.
+## `make fmt` rewrites the sources in place with Verible; `make fmt-check`
+## reports the files that would change (exit status 1).  The sources are
+## formatted with the pinned Verible release (see .github/requirements-ci.txt),
+## so keep that version when running the check.
 fmt:
 	@command -v $(VERIBLE) >/dev/null 2>&1 || { \
 	  echo "verible-verilog-format not found (pip install verible)"; exit 1; }

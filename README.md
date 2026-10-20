@@ -45,6 +45,9 @@ can run entirely **without hardware**, using `iverilog` and/or `verilator`.
 ## Quick start
 
 **Requirements**: `iverilog` + `vvp`, `python3` (≥ 3.10), `pytest` and `ruff`.
+The versions CI uses are pinned in [`.github/requirements-ci.txt`](.github/requirements-ci.txt)
+(`pytest==9.0.2`, `ruff==0.16.1`, `verible==0.0.4071.0`); install them with
+`python3 -m pip install -r ../.github/requirements-ci.txt` from `cpu8/`.
 Optional: `verilator` (co-simulation) and the FPGA tools (FPGA synthesis). The
 FPGA flow looks for `yosys`, `nextpnr-ice40` and `icepack` on the `PATH` and
 falls back to the YoWASP wheels, so either install the distro packages (on
@@ -65,10 +68,12 @@ make verilator   # C++ co-simulation of the whole processor
 make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
 make formal      # SymbiYosys proofs of the ALU and the FSM
 make fpga-check  # FPGA synthesis + area/timing budget
+make fmt-check   # check Verilog formatting with Verible 0.0.4071.0
 make fmt         # format the Verilog sources with Verible (opt-in)
-make difftest    # differential RTL-vs-model fuzzing
+make difftest    # differential RTL-vs-model fuzzing (COUNT=150 in CI)
+make difftest-long  # long fuzz, COUNT=10000 SEED=... (CI nightly/manual)
 make regress     # byte + trace regression + round-trip fuzzing
-make check       # the CI test job (formal, FPGA and coverage are separate)
+make check       # the CI test job only (fmt, formal, FPGA and coverage are separate)
 
 make sim  PROG=programs/countdown   # simulate a program (compares with its .ref)
 make wave PROG=programs/countdown   # same, and opens GTKWave
@@ -201,15 +206,28 @@ The project relies on several layers of checking, all runnable locally:
   programs.
 - **Linters**: `make vlint` (Verilator `-Wall` over the RTL) and `make lint` (ruff
   over the Python code).
-- **Formatting**: `make fmt` rewrites the Verilog sources with Verible and
-  `make fmt-check` lists the files that would change. Both are opt-in: the RTL
-  predates the formatter, so applying it touches every file.
+- **Formatting**: `make fmt-check` lists the Verilog files that would change
+  under Verible, and `make fmt` rewrites them in place. The sources are
+  formatted with `verible==0.0.4071.0` (the version pinned in
+  `.github/requirements-ci.txt`), so `make fmt-check` passes with that release;
+  a different Verible version may report spurious diffs. The check is enforced
+  by the CI `fmt` job.
 
 All of it runs in **GitHub Actions** on every push and *pull request*
-([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): one job runs the test
-suite, another proves the ALU and the FSM with SymbiYosys, another synthesizes
-the FPGA design and enforces the area/timing budget, and one enforces the 95 %
-line-coverage floor and publishes the annotated report.
+([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): the `test` job runs
+the test suite (`make check`), `fmt` enforces the Verilog formatting, `formal`
+proves the ALU and the FSM with SymbiYosys, `fpga` synthesizes the design,
+enforces the area/timing budget and publishes the `fpga-bitstream` artifact
+(30 days), and `coverage` enforces the 95 % line-coverage floor and publishes
+the annotated report. A `difftest-long` job runs `make difftest-long
+COUNT=10000` nightly at 03:00 UTC, or on manual dispatch when the `long` input
+is ticked; it never runs on push or pull request.
+
+Every action is pinned to a full commit SHA (with a `# vX.Y.Z` comment) and the
+Python tools are pinned in `.github/requirements-ci.txt`. Dependabot
+([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly, grouped
+minor/patch PRs for the `github-actions` pins and for the pip requirements in
+`.github/`.
 
 ---
 

@@ -1,0 +1,38 @@
+# Dependabot configuration.
+#
+# Two ecosystems are tracked:
+#   * github-actions: the workflow pins every action to a full commit SHA, so
+#     Dependabot is the mechanism that keeps those pins current.  It rewrites
+#     the SHA and the trailing `# vX.Y.Z` comment.
+#   * pip: the CI dependency files live in /.github (requirements-ci.txt,
+#     requirements-formal.txt, requirements-fpga.txt).
+#
+# Minor and patch bumps are grouped into a single PR per ecosystem to keep the
+# noise down; major bumps arrive as individual PRs and are reviewed by hand.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  - package-ecosystem: "pip"
+    directory: "/.github"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

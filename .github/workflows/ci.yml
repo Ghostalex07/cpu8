@@ -10,7 +10,16 @@ on:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  # The long differential fuzz runs overnight on the default branch; the
+  # regular jobs run on the scheduled event too and act as a daily regression.
+  schedule:
+    - cron: '0 3 * * *'
   workflow_dispatch:
+    inputs:
+      long:
+        description: 'Also run the long differential fuzz (COUNT=10000)'
+        type: boolean
+        default: false
 
 # Cancel the superseded runs of a branch/PR that is being pushed to quickly;
 # a run that is already on main is never cancelled.
@@ -32,10 +41,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -82,7 +91,7 @@ jobs:
       # so keep them when the job fails.
       - name: Upload the differential fuzz failures
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: difftest-failures
           path: cpu8/build/difftest-fallos/
@@ -90,11 +99,40 @@ jobs:
 
       - name: Upload the regression failures
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: regress-failures
           path: cpu8/build/regress/
           if-no-files-found: ignore
+
+  # Verible formatting is a pure text check and does not need iverilog, so it
+  # gets its own fast, independent job.  `verible==0.0.4071.0` is pinned in
+  # .github/requirements-ci.txt; the sources are formatted with exactly that
+  # version, so the check is reproducible.
+  fmt:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+
+    defaults:
+      run:
+        working-directory: cpu8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: .github/requirements-ci.txt
+
+      - name: Install dependencies
+        run: python3 -m pip install --quiet -r ../.github/requirements-ci.txt
+
+      - name: Verilog formatting (Verible)
+        run: make fmt-check
 
   # The ALU equivalence and FSM proofs are fast (~1 min) but need a solver and
   # the YoWASP Yosys/SymbiYosys stack, so they get their own job.
@@ -108,10 +146,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -139,10 +177,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
           # The YoWASP wheels are ~85 MB; caching them saves most of the
@@ -173,12 +211,24 @@ jobs:
       - name: FPGA area and timing budget
         run: python3 tools/fpga_report.py build/fpga.log
 
+      # The bitstream is the deliverable of this job: keep it for a month so it
+      # can be flashed without re-running the (slow) toolchain.  A missing
+      # bitstream means the synthesis silently produced nothing, hence the
+      # strict if-no-files-found.
+      - name: Upload the bitstream
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: fpga-bitstream
+          path: cpu8/build/top.bin
+          retention-days: 30
+          if-no-files-found: error
+
       # When place and route fails, the short log `make fpga` prints is usually
       # not enough to tell an area overflow from a routing problem, so keep the
       # whole nextpnr log around.
       - name: Upload the nextpnr log on failure
         if: failure()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: fpga-log
           path: cpu8/build/fpga.log
@@ -199,10 +249,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
 
       - name: Set up Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.12'
 
@@ -217,10 +267,44 @@ jobs:
 
       - name: Upload the annotated report
         if: always()
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
         with:
           name: rtl-coverage
           path: |
             cpu8/build/verilator-cov/coverage.info
             cpu8/build/verilator-cov/report/
           if-no-files-found: ignore
+
+  # A much longer differential fuzz than the 150 programs of the `test` job.
+  # It is too slow for push/PR feedback, so it only runs on the nightly cron
+  # (03:00 UTC) or when a maintainer ticks `long` in the manual dispatch form.
+  difftest-long:
+    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.long == 'true')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    defaults:
+      run:
+        working-directory: cpu8
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+          cache-dependency-path: .github/requirements-ci.txt
+
+      # pip only provides the pytest/ruff/verible pins; the fuzz itself needs
+      # iverilog to simulate the RTL.
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y iverilog
+          python3 -m pip install --quiet -r ../.github/requirements-ci.txt
+
+      - name: Long differential fuzz (RTL vs reference model)
+        run: make difftest-long COUNT=10000 SEED=${{ github.run_number }}

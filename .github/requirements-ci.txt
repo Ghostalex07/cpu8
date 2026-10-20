@@ -1,7 +1,12 @@
-# Python dependencies of the CI `test` job.
+# Python dependencies of the CI test and fmt jobs.
 #
 # Used by actions/setup-python as the cache key (cache: pip) so the runner does
-# not re-download pytest/ruff on every run.  The versions are intentionally
-# unpinned: they track whatever the runner resolves, the same as before.
-pytest
-ruff
+# not re-download the tools on every run.  Versions are pinned so that the
+# checks are reproducible: `verible==0.0.4071.0` is the formatter version the
+# Verilog sources were formatted with, and ruff/pytest match the local
+# toolchain.  Dependabot proposes updates for this file (see
+# .github/dependabot.yml); bump the pins deliberately and run `make fmt` if the
+# formatter changes.
+pytest==9.0.2
+ruff==0.16.1
+verible==0.0.4071.0

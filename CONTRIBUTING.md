@@ -8,7 +8,8 @@ environment, how to run the checks and the conventions of the project.
 Requirements:
 
 - `iverilog` + `vvp` (simulation)
-- `python3` (≥ 3.10) with `pytest` and `ruff`
+- `python3` (≥ 3.10) with `pytest`, `ruff` and `verible` (pinned in
+  `.github/requirements-ci.txt`)
 - Optional: `verilator` (co-simulation) and the FPGA tools (FPGA synthesis):
   `yosys` + `nextpnr-ice40` + `fpga-icestorm` on Debian/Ubuntu (the
   `fpga-icestorm` package is the one providing `icepack`), or
@@ -17,15 +18,21 @@ Requirements:
 ```bash
 git clone https://github.com/Ghostalex07/cpu8.git
 cd cpu8
-pip install pytest ruff        # or: python3 -m pip install pytest ruff
+python3 -m pip install -r ../.github/requirements-ci.txt
 ```
+
+That file pins `pytest==9.0.2`, `ruff==0.16.1` and `verible==0.0.4071.0`, the
+same versions CI uses. Keep the Verible version in sync with the formatter that
+produced the sources: `make fmt-check` passes with 0.0.4071.0 (and may report
+false diffs with other releases).
 
 The `Makefile` is in `cpu8/`; run the commands from that folder.
 
 ## Running the checks
 
-Before submitting changes, run the checks of the **CI test job** (the
-`formal`, `fpga` and `coverage` jobs run separately):
+Before submitting changes, run the checks of the **CI test job** (the `fmt`,
+`formal`, `fpga` and `coverage` jobs run separately, and `difftest-long` only
+runs on the nightly schedule or a manual dispatch):
 
 ```bash
 cd cpu8
@@ -39,15 +46,16 @@ make test          # module testbenches + demo programs + interrupts
 make vlint         # RTL lint with Verilator -Wall (must stay clean)
 make pytools       # pytest: assembler, ISA table, disassembler, ISS, debugger, FPGA report and coverage report
 make lint          # ruff over the Python code
-make difftest      # differential RTL-vs-reference-model fuzzing
+make difftest      # differential RTL-vs-reference-model fuzzing (COUNT=150 in CI)
+make difftest-long # long fuzz (default COUNT=10000, SEED=...; CI nightly/manual)
 make regress       # byte + trace regression + round-trip fuzzing
 make verilator     # C++ co-simulation (requires verilator)
 make coverage      # Verilator coverage report of the RTL (requires verilator)
 make formal        # SymbiYosys proofs of the ALU and the FSM (requires yowasp-yosys + z3)
 make fpga          # iCEstick synthesis + bitstream (requires the FPGA tools)
 make fpga-check    # fpga + area/timing budget check (tools/fpga_report.py)
-make fmt           # format the Verilog sources with Verible (pip install verible)
-make fmt-check     # list the Verilog files that would be reformatted
+make fmt           # format the Verilog sources with Verible (pip install verible==0.0.4071.0)
+make fmt-check     # list the files Verible would reformat (CI `fmt` job; green with 0.0.4071.0)
 ```
 
 If your change intentionally affects assembly you will have to regenerate the
@@ -117,6 +125,22 @@ touch the instruction set:
    to stay useful.
 5. Pass `make check` (it includes `make docs-check`, which fails if the generated
    table is out of date).
+
+## Dependencies and CI
+
+- **Actions are pinned**: every `uses:` in `.github/workflows/ci.yml` references
+  a full 40-hex commit SHA with a trailing `# vX.Y.Z` comment. Never replace a
+  SHA pin with a moving tag such as `@v5`; let Dependabot update the SHA.
+- **Python tools are pinned**: `.github/requirements-ci.txt` pins `pytest`,
+  `ruff` and `verible`; the `formal` and `fpga` jobs pin their YoWASP wheels in
+  `requirements-formal.txt` / `requirements-fpga.txt`.
+- **Dependabot** (`.github/dependabot.yml`) opens weekly, grouped minor/patch
+  PRs for `github-actions` and for the pip requirements in `/.github`. Major
+  bumps arrive as individual PRs. For a Verible bump, run `make fmt` and commit
+  the reformat in the same PR so `fmt-check` stays green.
+- `make check` is the CI **test** job only; `fmt`, `formal`, `fpga` and
+  `coverage` are separate jobs, and `difftest-long` runs nightly at 03:00 UTC or
+  via `workflow_dispatch` with the `long` input.
 
 ## Pull requests
 
