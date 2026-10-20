@@ -7,6 +7,8 @@
 //       addresses.
 //    3) Rewriting a position previously loaded by $readmemh.
 //    4) `we=0` does not modify the memory.
+//    5) `rst=1` inhibits a pending write (a reset in the middle of a store
+//       cycle must not commit it).
 //
 //  The read is registered on the FALLING edge (mem[addr] -> rdata), so
 //  the data is available mid-cycle to the datapath, which registers
@@ -18,14 +20,14 @@
 
 module ram_tb;
 
-    reg clk = 0, we = 0;
+    reg clk = 0, rst = 0, we = 0;
     reg [7:0] addr = 0, wdata = 0;
     wire [7:0] rdata;
 
     integer errors = 0;
 
     ram dut (
-        .clk(clk), .rst(1'b0), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata)
+        .clk(clk), .rst(rst), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata)
     );
 
     always #5 clk = ~clk;
@@ -80,6 +82,13 @@ module ram_tb;
         // 4) we=0 must not change anything.
         we = 0; addr = 8'h10; wdata = 8'h00; @(posedge clk); #1;
         chk(8'h10, 8'hDE);
+
+        // 5) A write coinciding with reset must not reach the memory.
+        wr(8'h20, 8'h5A);
+        chk(8'h20, 8'h5A);
+        rst = 1; we = 1; addr = 8'h20; wdata = 8'hA5;
+        @(posedge clk); #1; we = 0; rst = 0;
+        chk(8'h20, 8'h5A);
 
         if (errors == 0)
             $display("RAM: ALL TESTS PASSED");
