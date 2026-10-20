@@ -288,11 +288,13 @@ fmt:
 fmt-check:
 	@command -v $(VERIBLE) >/dev/null 2>&1 || { \
 	  echo "verible-verilog-format not found (pip install verible)"; exit 1; }
-	@rc=0; for f in $(V_FILES); do \
-	  if ! $(VERIBLE) "$$f" | diff -q "$$f" - >/dev/null; then \
+	@rc=0; tmp=$$(mktemp) || exit 1; \
+	for f in $(V_FILES); do \
+	  $(VERIBLE) "$$f" > "$$tmp" 2>/dev/null || { rm -f "$$tmp"; exit 2; }; \
+	  if ! diff -q "$$f" "$$tmp" >/dev/null; then \
 	    echo "needs formatting: $$f"; rc=1; \
 	  fi; \
-	done; exit $$rc
+	done; rm -f "$$tmp"; exit $$rc
 
 ## --- FPGA (Phase 7.6): synthesis for iCEstick (iCE40HX1K, TQ144) ---
 ## Assembles FPGA_PROG, loads its .hex into RAM (via -DRAM_INIT) and generates the
