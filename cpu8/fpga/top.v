@@ -4,13 +4,16 @@
 //  top.v - FPGA implementation (Phase 7.6) for the iCEstick (iCE40HX1K, TQ144)
 //
 //  It is the "board": it instantiates the CPU, generates the power-on reset from
-//  the clock and shows the 5 least significant OUT outputs on the 5 LEDs.
+//  the clock, shows the 5 least significant OUT outputs on the 5 LEDs and wires
+//  the 8 data pins of the Pmod connector to the CPU input bus (`in_data`). The
+//  iCEstick has no user switches, so `IN` reads that byte.
 //
 //  The program is loaded into the CPU RAM at synthesis time: ram.v includes a
 //  $readmemh("fpga/program.hex") under `ifdef RAM_INIT` (the Makefile defines it).
 // ============================================================================
 module top (
     input  wire       clk,        // 12 MHz clock (pin 21 on the iCEstick)
+    input  wire [7:0] pmod_in,    // Pmod data pins: CPU input bus (see the PCF)
     output wire [4:0] led         // 5 LEDs (D1..D5)
 );
 
@@ -20,6 +23,16 @@ module top (
 
     always @(posedge clk)
         if (por != 4'hF) por <= por + 4'd1;
+
+    // The Pmod pins are asynchronous: two flip-flops resynchronize them to clk.
+    // The PCF enables the internal pull-ups, so an unconnected bus reads 0xFF.
+    reg [7:0] in_meta = 8'hFF;
+    reg [7:0] in_sync = 8'hFF;
+
+    always @(posedge clk) begin
+        in_meta <= pmod_in;
+        in_sync <= in_meta;
+    end
 
     // The CPU (no interrupts in this demo).
     wire        halted;
@@ -34,7 +47,7 @@ module top (
         .halted(halted),
         .out_data(out_data),
         .out_valid(out_valid),
-        .in_data(8'h00),      // no inputs wired in this demo
+        .in_data(in_sync),
         .in_port(in_port)
     );
 

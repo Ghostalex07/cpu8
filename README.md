@@ -179,7 +179,11 @@ The project relies on several layers of checking, all runnable locally:
   job — fails if the design outgrows the area budget or misses the 12 MHz timing
   target (`tools/fpga_report.py`). The job installs the pinned YoWASP wheels
   instead of the distro packages: nextpnr 0.6 places the design at 11.35 MHz and
-  then aborts, so the area/timing budget would not be comparable.
+  then aborts, so the area/timing budget would not be comparable. The iCEstick
+  has no user switches: `IN` reads the eight data pins of the Pmod connector
+  (with internal pull-ups), so a Pmod cable or a jumper can exercise the input
+  port of `programs/inout.asm`; with nothing connected the pull-ups make it
+  read `0xFF`.
 - **Reference model (ISS)**: `tools/iss.py` implements the ISA in Python. The
   **differential fuzzing** (`make difftest`, `tools/difftest.py` +
   `tb/cpu_dump_tb.v`) runs each program on the RTL and on the ISS and compares the

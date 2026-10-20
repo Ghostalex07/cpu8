@@ -65,3 +65,25 @@ def test_main_returns_zero_for_a_fitting_report(tmp_path, capsys):
 
 def test_main_fails_on_a_missing_report(tmp_path):
     assert fpga_report.main([str(tmp_path / "absent.log")]) == 2
+
+
+def test_parse_rejects_an_ignored_pcf_setting():
+    text = REPORT + "Warning: Ignoring PCF setting '--pullup' for cell pmod_in[0]\n"
+    with pytest.raises(ValueError, match="Ignoring PCF setting"):
+        fpga_report.parse(text)
+
+
+def test_parse_rejects_an_unmatched_constraint():
+    text = REPORT + "Info: unmatched constraint pmod_in[8]\n"
+    with pytest.raises(ValueError, match="unmatched constraint"):
+        fpga_report.parse(text)
+
+
+def test_main_fails_on_an_ignored_pcf_setting(tmp_path, capsys):
+    log = tmp_path / "fpga.log"
+    log.write_text(
+        REPORT + "Warning: Ignoring PCF setting '--pullup' for cell pmod_in[0]\n",
+        encoding="utf-8",
+    )
+    assert fpga_report.main([str(log)]) == 1
+    assert "Ignoring PCF setting" in capsys.readouterr().err

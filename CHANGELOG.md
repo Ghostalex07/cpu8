@@ -85,8 +85,8 @@ The project does not publish numbered releases yet, so changes are grouped under
   design is calibrated with — the distro nextpnr 0.6 places the design at 11.35 MHz
   and aborts before the check even runs), runs `make fpga` on the iCE40HX1K and
   then `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds
-  80 % of the logic cells or misses the 12 MHz timing target (currently 845/1280
-  LCs, ~14.9 MHz). `make fpga-check` runs the same check locally. The Makefile now
+  80 % of the logic cells or misses the 12 MHz timing target (currently 862/1280
+  LCs, ~12.8 MHz). `make fpga-check` runs the same check locally. The Makefile now
   also finds `nextpnr-ice40` and `icepack` from YoWASP on the `PATH`.
 - **CI caching and artefacts**: pip caching keyed on
   `.github/requirements-ci.txt` / `.github/requirements-fpga.txt` so the FPGA job
@@ -119,6 +119,10 @@ The project does not publish numbered releases yet, so changes are grouped under
   date (`make docs-check`).
 - **Documentation**: root `README.md`, `CONTRIBUTING.md`, this `CHANGELOG.md`,
   *issue* and *pull request* templates, and `.gitattributes`.
+- **FPGA input bus**: the iCEstick has no user switches, so `fpga/top.v` wires
+  the eight data pins of the Pmod connector to the CPU `in_data` bus through a
+  two-flip-flop synchronizer (the PCF enables the internal pull-ups).
+  `cpu8/tb/top_tb.v` checks the `IN`/`OUT` path end to end.
 
 ### Changed
 
@@ -142,7 +146,7 @@ The project does not publish numbered releases yet, so changes are grouped under
   CALL, PUSHF, STW or the interrupt push landed in RAM on the reset edge).
 - The FPGA build now uses the full 256-byte RAM (the `FPGA_RAM64` variant
   aliased every address modulo 64, moved `SP` to `0x3F` and silently truncated
-  programs longer than 64 bytes). A fresh build uses 845/1280 LCs at 14.91 MHz.
+  programs longer than 64 bytes). A fresh build uses 862/1280 LCs at 12.81 MHz.
 - `tools/disasm.py`: an image ending in a conditional jump no longer raises
   `IndexError`; reserved and aliased encodings disassemble to `.db` so the
   round trip is byte-identical; truncated instructions are emitted as bytes;

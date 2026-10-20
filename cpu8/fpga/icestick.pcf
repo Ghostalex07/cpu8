@@ -2,10 +2,22 @@
 #  icestick.pcf - Pin constraints for the iCEstick (iCE40HX1K, TQ144)
 #
 #  12 MHz clock on pin 21 and the 5 LEDs (D1..D5) on pins 95..99.
+#  The iCEstick has no user switches: the 8 data pins of the Pmod connector are
+#  the CPU input bus read by IN (Pmod pins 1-4 and 7-10; 5/11 are GND, 6/12 VCC).
+#  The pull-ups keep the bus at 0xFF when nothing is connected.
 #  Synthesis:  make fpga
 # ============================================================================
 
 set_io clk 21
+
+set_io -pullup yes pmod_in[0] 78
+set_io -pullup yes pmod_in[1] 79
+set_io -pullup yes pmod_in[2] 80
+set_io -pullup yes pmod_in[3] 81
+set_io -pullup yes pmod_in[4] 87
+set_io -pullup yes pmod_in[5] 88
+set_io -pullup yes pmod_in[6] 90
+set_io -pullup yes pmod_in[7] 91
 
 set_io led[0] 95
 set_io led[1] 96

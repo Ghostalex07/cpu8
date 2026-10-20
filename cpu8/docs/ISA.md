@@ -613,6 +613,10 @@ E.g.: `OUT A`=`E0`, `IN A`=`E1`, `OUT 2, B`=`F8 06`, `IN 3, D`=`F9 0F`.
 Example program: `programs/inout.asm` (the testbench presents `0x10+n` on
 `in_data` for port `n`).
 
+On the iCEstick the eight data pins of the Pmod connector drive `in_data` (with
+internal pull-ups and a two-flip-flop synchronizer in `fpga/top.v`), so `IN`
+reads that byte; see `fpga/icestick.pcf` for the pinout.
+
 ### 10.10 Extended instructions (Phase 12, prefix `0xFA`)
 
 The byte `0xFA` is a **prefix**: it selects an *extended operation* that is

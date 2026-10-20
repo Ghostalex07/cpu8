@@ -28,9 +28,21 @@ MIN_FMAX_MHZ = 12.0  # design clock target
 LC_RE = re.compile(r"ICESTORM_LC:\s+(\d+)/\s+(\d+)")
 FMAX_RE = re.compile(r"Max frequency for clock '[^']*':\s+([0-9.]+)\s*MHz")
 
+# A constraint that nextpnr did not understand (for example a mistyped pin
+# attribute) leaves the design silently unconstrained or without the attribute.
+CRITICAL_WARNINGS = ("Ignoring PCF setting", "unmatched constraint")
+
 
 def parse(text: str) -> tuple[int, float]:
-    """Extract the logic-cell count and the worst Fmax from a nextpnr report."""
+    """Extract the logic-cell count and the worst Fmax from a nextpnr report.
+
+    A PCF constraint that nextpnr ignored or could not match is a hard error:
+    otherwise the build can pass with the pin unconstrained or the attribute
+    (for example a pull-up) silently disabled.
+    """
+    for warning in CRITICAL_WARNINGS:
+        if warning in text:
+            raise ValueError(f"nextpnr reported '{warning}': fix the PCF constraints")
     lc = LC_RE.search(text)
     fmax = [float(value) for value in FMAX_RE.findall(text)]
     if lc is None:

@@ -100,7 +100,8 @@ modtests: dirs
 	  for tb in $(MOD_TB); do \
 	    name=$$(basename $$tb .v); \
 	    echo "=== $$name ==="; \
-	    $(IVERILOG) $(IVFLAGS) -s $$name -o $(BUILD)/$$name.vvp $$tb $(RTL_DIR)/*.v; \
+	    $(IVERILOG) $(IVFLAGS) -s $$name -o $(BUILD)/$$name.vvp $$tb \
+	      $(RTL_DIR)/*.v $(FPGA_DIR)/top.v; \
 	    $(VVP) $(BUILD)/$$name.vvp; \
 	    echo ""; \
 	  done; \

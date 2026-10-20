@@ -10,7 +10,7 @@ CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unifie
 - **Control**: synchronous FSM with 7 states (`FETCH`, `OPR`, `OPR2`, `EXEC`, `EXEC2`, `IRQ`, `HLT`)
 - **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
 - **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle; `RETI` restores the saved arithmetic flags (flag `I` stays cleared)
-- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the full 256-byte memory and ~66 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the full 256-byte memory and ~67 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
 
 ## Datapath
 
@@ -20,7 +20,7 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 - **Regfile** (`rtl/regfile.v`): bank with 4 registers A,B,C,D. 2 combinational read ports, **2** synchronous write ports with `we`/`we2` (the second one is used by `SWAP rd,rs` to write both registers in the same cycle).
 - **ALU** (`rtl/alu.v`): combinational arithmetic-logic unit. Produces the result and the `Z`, `C`, `N`, `V` flags. It has a `cin` input (the carry/borrow for `ADC`/`SBC` and the bit rotated in by `ROL`/`ROR`, wired to flag `C`, or to the low-byte carry `c16` while executing the high byte of `ADCW`/`SUBW`).
 - **RAM** (`rtl/ram.v`): 256x8 memory. **Synchronous** write with `we` and read **registered on the falling edge** (`mem[addr] → rdata`). Because the data is available mid-cycle, the datapath (which registers on `posedge`) sees it in the same cycle, while the memory can be mapped to **BRAM** (SB_RAM40_4K) instead of distributed logic. Supports `$readmemh` in simulation and initialization for FPGA synthesis.
-- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `xop` (byte 2 of a prefixed `0xFA` instruction, i.e. the extended opcode + register indices), `c16`/`z16` (carry/zero captured from the low byte of the 16-bit pair operations), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports).
+- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `xop` (byte 2 of a prefixed `0xFA` instruction, i.e. the extended opcode + register indices), `c16`/`z16` (carry/zero captured from the low byte of the 16-bit pair operations), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports). On the iCEstick, `in_data` is wired to the eight data pins of the Pmod connector (internal pull-ups) and synchronized to the clock in `fpga/top.v`.
 - **Buses**: `addr`, `data_in`, `data_out`, control signals from `control.v`.
 
 ## Control unit (FSM)
