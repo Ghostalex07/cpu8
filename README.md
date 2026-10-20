@@ -59,7 +59,7 @@ Everything runs from the `cpu8/` folder:
 cd cpu8
 
 make test        # module testbenches + assemble/simulate/compare programs/*.asm
-make pytools     # pytest: assembler, ISA table, disassembler, ISS model and debugger
+make pytools     # pytest: assembler, ISA table, disassembler, ISS, debugger, FPGA report and coverage report
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
 make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
@@ -68,7 +68,7 @@ make fpga-check  # FPGA synthesis + area/timing budget
 make fmt         # format the Verilog sources with Verible (opt-in)
 make difftest    # differential RTL-vs-model fuzzing
 make regress     # byte + trace regression + round-trip fuzzing
-make check       # the same suite CI runs for a push
+make check       # the CI test job (formal, FPGA and coverage are separate)
 
 make sim  PROG=programs/countdown   # simulate a program (compares with its .ref)
 make wave PROG=programs/countdown   # same, and opens GTKWave
@@ -157,8 +157,8 @@ The ISA includes:
 
 The project relies on several layers of checking, all runnable locally:
 
-- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`), with exhaustive sweeps
-  in the ALU.
+- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`, `cpu_directed`), with
+  exhaustive sweeps in the ALU.
 - **Example programs**: each `programs/*.asm` is assembled, simulated with
   `cpu_tb.v` and its `OUT` output is compared with `programs/*.ref`.
 - **Interrupts**: `irq_tb.v` checks IRQ handling; `RETI` restores the arithmetic

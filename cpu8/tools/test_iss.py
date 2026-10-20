@@ -238,3 +238,24 @@ def test_iss_reproduce_los_ref(asm_path: Path) -> None:
     m = ejecutar(asm_path.read_text())
     obtenido = [v for v, _ in m.outs]
     assert obtenido == esperado
+
+
+# ---------------------------------------------------------------------------
+#  Command line and .hex parsing
+# ---------------------------------------------------------------------------
+def test_leer_hex_ignora_comentarios(tmp_path) -> None:
+    path = tmp_path / "x.hex"
+    path.write_text("10 20 ; one\n30 // two\n")
+    assert iss._leer_hex(path) == [0x10, 0x20, 0x30]
+
+
+def test_main_devuelve_dos_si_falta_el_fichero(tmp_path, capsys) -> None:
+    assert iss.main(["iss.py", str(tmp_path / "nope.hex")]) == 2
+    assert "iss:" in capsys.readouterr().err
+
+
+def test_main_devuelve_dos_con_un_max_invalido(tmp_path, capsys) -> None:
+    path = tmp_path / "p.hex"
+    path.write_text("F0\n")
+    assert iss.main(["iss.py", "--max", "x", str(path)]) == 2
+    assert "invalid --max" in capsys.readouterr().err

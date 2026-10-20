@@ -28,6 +28,16 @@ def d(bs: list[int]) -> str:
     return texto
 
 
+def _id_bytes(bs: list[int]) -> str:
+    """Readable pytest id for a byte sequence."""
+    return " ".join(f"{b:02X}" for b in bs)
+
+
+def _crudo(bs: list[int], etiquetas: bool = True) -> str:
+    """Reassemblable source for a byte sequence."""
+    return "\n".join(disasm.desensamblar_crudo(bs, etiquetas)) + "\n"
+
+
 def test_reti() -> None:
     assert d([0xFA, 0xE0]) == "RETI"
 
@@ -141,3 +151,147 @@ def test_fuzz_round_trip(semilla: int) -> None:
     original = assembler.ensamblar(fuente)[0]
     reensamblado = assembler.ensamblar("\n".join(disasm.desensamblar_crudo(original)) + "\n")[0]
     assert reensamblado == original, f"seed {semilla}:\n{fuente}"
+
+
+# ---------------------------------------------------------------------------
+#  Reserved/aliased encodings: emitted as .db so that the bytes are preserved
+# ---------------------------------------------------------------------------
+
+# rs[1] is ignored by the RTL (alu_sh = rs[0]): SHL/SHR only use rs[0].
+ALIAS_SHIFT = (0xB2, 0xB3, 0xB6, 0xB7, 0xBA, 0xBB, 0xBE, 0xBF)
+# JMP/CALL ignore the rd bits: only rd=00 is canonical.
+ALIAS_SALTO = (0xC4, 0xC5, 0xC8, 0xC9, 0xCC, 0xCD)
+# Jcc family 11 is an alias of family 10.
+ALIAS_JCC = (0xDC, 0xDD, 0xDE, 0xDF)
+ALIAS_RESERVADOS = [[b] for b in ALIAS_SHIFT] + [[b, 0x20] for b in ALIAS_SALTO + ALIAS_JCC]
+
+
+@pytest.mark.parametrize("bs", ALIAS_RESERVADOS, ids=_id_bytes)
+def test_alias_reservados_ida_y_vuelta(bs: list[int]) -> None:
+    esperado = ".db " + ", ".join(f"0x{b:02X}" for b in bs)
+    texto, longitud = disasm.decodificar(bs, 0)
+    assert (texto, longitud) == (esperado, len(bs))
+    assert assembler.ensamblar(_crudo(bs))[0] == bs
+    # The listing shows the same .db text.
+    assert any(".db" in linea for linea in disasm.desensamblar(bs))
+
+
+# Second bytes with bits the RTL ignores: high nibble of the 0xF4-0xF9 forms
+# and unused fields of the 0xFA extended operations.
+ALIAS_OPERANDOS = [
+    [0xF4, 0x10],
+    [0xF5, 0x10],
+    [0xF6, 0x10],
+    [0xF7, 0x10],
+    [0xF8, 0x10],
+    [0xF9, 0x10],
+    [0xFA, 0x01],  # NEG with rs != 0
+    [0xFA, 0x17],  # NOT with rs != 0
+    [0xFA, 0xA1],  # PUSHF with rd/rs != 0
+    [0xFA, 0xB3],  # POPF with rd/rs != 0
+    [0xFA, 0xE5],  # RETI with rd/rs != 0
+    [0xFA, 0xC1],  # ADCW with a non-pair register
+    [0xFA, 0xDD],  # SUBW with a non-pair register
+]
+
+
+@pytest.mark.parametrize("bs", ALIAS_OPERANDOS, ids=_id_bytes)
+def test_operando_con_bits_ignorados_ida_y_vuelta(bs: list[int]) -> None:
+    texto, longitud = disasm.decodificar(bs, 0)
+    assert texto == ".db " + ", ".join(f"0x{b:02X}" for b in bs)
+    assert longitud == len(bs)
+    assert assembler.ensamblar(_crudo(bs))[0] == bs
+
+
+# ---------------------------------------------------------------------------
+#  Truncated jumps and jump targets that are not instruction starts
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("b", [0xC0, 0xC1, 0xD0, 0xD1, 0xD7, 0xDB, 0xDC, 0xDF])
+def test_salto_sin_operando_al_final(b: int) -> None:
+    assert disasm._destinos([b]) == set()
+    mem = [0x00, b]  # INC A followed by a jump without its target byte
+    fuente = _crudo(mem)
+    assert ".db" in fuente
+    assert assembler.ensamblar(fuente)[0] == mem
+
+
+@pytest.mark.parametrize(
+    "mem",
+    [
+        [0xC0, 0x01, 0x20],  # JMP into its own operand (mid-instruction)
+        [0xC1, 0x01, 0x20],  # CALL into its own operand
+        [0xD0, 0x01, 0x20],  # JZ into the JMP operand
+        [0xC0, 0x04, 0x20, 0xF0],  # JMP past the end
+        [0xD7, 0x08, 0x20],  # JGT past the end
+    ],
+    ids=_id_bytes,
+)
+def test_salto_a_direccion_que_no_es_instruccion(mem: list[int]) -> None:
+    fuente = _crudo(mem)
+    assert "L_" not in fuente
+    assert assembler.ensamblar(fuente)[0] == mem
+
+
+def test_salto_a_inicio_valido_conserva_etiqueta() -> None:
+    mem = [0xC0, 0x02, 0xF0]  # JMP to HLT
+    fuente = _crudo(mem)
+    assert "L_0002:" in fuente
+    assert "JMP L_0002" in fuente
+    assert assembler.ensamblar(fuente)[0] == mem
+
+
+@pytest.mark.parametrize("b", range(256))
+def test_byte_suelto_ida_y_vuelta(b: int) -> None:
+    # A lone byte may be a truncated instruction: it must still reassemble
+    # to exactly the same byte (as .db), without inventing operand bytes.
+    assert assembler.ensamblar(_crudo([b]))[0] == [b]
+
+
+# ---------------------------------------------------------------------------
+#  Command line: usage and input errors return 2 without a traceback
+# ---------------------------------------------------------------------------
+
+
+def test_main_fichero_inexistente(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    codigo = disasm.main(["disasm.py", str(tmp_path / "no-existe.hex")])
+    err = capsys.readouterr().err
+    assert codigo == 2
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_main_o_sin_valor(capsys: pytest.CaptureFixture[str]) -> None:
+    codigo = disasm.main(["disasm.py", "programs/countdown.hex", "-o"])
+    err = capsys.readouterr().err
+    assert codigo == 2
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_main_salida_no_escribible(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    entrada = tmp_path / "ok.hex"
+    entrada.write_text("F0\n")
+    salida = tmp_path / "no-existe" / "salida.lst"
+    codigo = disasm.main(["disasm.py", str(entrada), "-o", str(salida)])
+    err = capsys.readouterr().err
+    assert codigo == 2
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_main_asm_invalido(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fuente = tmp_path / "roto.asm"
+    fuente.write_text("NO_EXISTE A\n")
+    codigo = disasm.main(["disasm.py", str(fuente)])
+    err = capsys.readouterr().err
+    assert codigo == 2
+    assert "Traceback" not in err
+    assert len(err.strip().splitlines()) == 1
+
+
+def test_main_camino_correcto(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    entrada = tmp_path / "ok.hex"
+    entrada.write_text("F0\n")
+    salida = tmp_path / "salida.lst"
+    assert disasm.main(["disasm.py", str(entrada), "-o", str(salida)]) == 0
+    assert "HLT" in salida.read_text()
+    assert "Listing written to" in capsys.readouterr().out

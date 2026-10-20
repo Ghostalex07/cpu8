@@ -446,9 +446,12 @@ class ISS:
 
 
 def _leer_hex(path: Path) -> list[int]:
+    """Reads bytes from a ``.hex``; ``;`` and ``//`` comments are ignored."""
     datos = []
-    for tok in path.read_text().split():
-        datos.append(int(tok, 16))
+    for linea in path.read_text().splitlines():
+        linea = linea.split(";", 1)[0].split("//", 1)[0]
+        for tok in linea.split():
+            datos.append(int(tok, 16))
     return datos
 
 
@@ -459,12 +462,27 @@ def main(argv: list[str]) -> int:
     max_steps = 5000
     if "--max" in args:
         k = args.index("--max")
-        max_steps = int(args[k + 1])
+        if k + 1 >= len(args):
+            print("iss: --max expects a number", file=sys.stderr)
+            return 2
+        try:
+            max_steps = int(args[k + 1])
+        except ValueError:
+            print(f"iss: invalid --max value '{args[k + 1]}'", file=sys.stderr)
+            return 2
         del args[k : k + 2]
     if not args:
         print(__doc__)
         return 2
-    iss = ISS(_leer_hex(Path(args[0])))
+    try:
+        memoria = _leer_hex(Path(args[0]))
+    except OSError as exc:
+        print(f"iss: {exc}", file=sys.stderr)
+        return 2
+    except ValueError as exc:
+        print(f"iss: invalid hex file: {exc}", file=sys.stderr)
+        return 2
+    iss = ISS(memoria)
     iss.run(max_steps)
     if trace:
         for line in iss.dump():

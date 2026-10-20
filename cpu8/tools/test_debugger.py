@@ -269,3 +269,65 @@ def test_invalid_argument_reports_error_without_crashing():
 
 if __name__ == "__main__":
     raise SystemExit(pytest.main([__file__, "-q"]))
+
+
+# ---- address parsing and command failures ----------------------------------
+def test_until_accepts_a_decimal_address_with_a_leading_zero():
+    dbg, logs = build(COUNT)
+    dbg.handle("until 08")  # the HLT is at address 8
+    assert any("reached 0x08" in line for line in logs)
+
+
+def test_break_rejects_an_address_outside_the_memory():
+    dbg, logs = build(COUNT)
+    dbg.handle("break 300")
+    assert dbg.breakpoints == set()
+    assert any("outside the 256-byte memory" in line for line in logs)
+
+
+def test_negative_memory_count_is_rejected():
+    dbg, logs = build(COUNT)
+    dbg.handle("mem 0 -4")
+    assert any("count must be positive" in line for line in logs)
+
+
+def test_exec_commands_return_nonzero_when_one_fails(tmp_path, capsys):
+    source = tmp_path / "p.asm"
+    source.write_text(COUNT)
+    rc = debugger.main([str(source), "-e", "frobnicate"])
+    assert rc == 1
+
+
+def test_exec_commands_return_zero_when_all_succeed(tmp_path):
+    source = tmp_path / "p.asm"
+    source.write_text(COUNT)
+    assert debugger.main([str(source), "-e", "regs; step 2"]) == 0
+
+
+def test_watchpoints_fire_on_the_interrupt_cycle():
+    # take_irq pushes the return PC (SP 0xF0 -> 0xEF) in its own cycle; the SP
+    # watch must report that change instead of skipping to the next instruction.
+    source = """\
+        LDI A, 0
+        EI
+    loop:
+        JMP loop
+    """
+    dbg, logs = build(source, irq_at=0, irq_vector=0x03)
+    dbg.handle("watch SP")
+    dbg.handle("step 3")  # LDI, EI, then the interrupt cycle
+    assert any(line.startswith("watch: SP F0 -> EF") for line in logs)
+
+
+def test_mem_accepts_a_count_with_a_leading_zero() -> None:
+    dbg, logs = build(COUNT)
+    dbg.handle("mem 0 08")
+    assert not dbg.last_error
+    assert any(line.startswith("00:") for line in logs)
+
+
+def test_invalid_hex_file_is_reported_without_a_traceback(tmp_path, capsys) -> None:
+    bad = tmp_path / "bad.hex"
+    bad.write_text("ZZ\n")
+    assert debugger.main([str(bad), "-e", "step"]) == 1
+    assert "cannot read" in capsys.readouterr().err

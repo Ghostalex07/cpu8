@@ -19,7 +19,9 @@ from __future__ import annotations
 
 import re
 import sys
+from collections.abc import Sequence
 from pathlib import Path
+from types import ModuleType
 
 REGS = ("A", "B", "C", "D")
 
@@ -31,7 +33,7 @@ _JCC = (
     ("JZ", "JNZ", "JC", "JNC"),  # family 00: unsigned
     ("JLT", "JGE", "JLE", "JGT"),  # family 01: signed (N/V)
     ("JVS", "JVC", "JMI", "JPL"),  # family 10: status
-    ("JVS", "JVC", "JMI", "JPL"),  # family 11: reserved (same as 10)
+    ("JVS", "JVC", "JMI", "JPL"),  # family 11: reserved alias of 10 (decoded as .db)
 )
 # Extended (prefixed, 0xFA) sub-operations: byte2 = (xop<<4)|(rd<<2)|rs.
 _XOP_NEG = 0x0
@@ -53,26 +55,43 @@ _RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
 
 
 def leer_hex(path: Path) -> list[int]:
-    """Reads bytes from a ``.hex`` (one byte per line or space-separated)."""
+    """Reads bytes from a ``.hex`` (one byte per line or space-separated).
+
+    ``;`` and ``//`` comments are ignored, like ``$readmemh`` does.
+    """
     datos: list[int] = []
-    for tok in _RE_HEX.findall(path.read_text()):
-        datos.append(int(tok, 16))
+    for linea in path.read_text().splitlines():
+        linea = linea.split(";", 1)[0].split("//", 1)[0]
+        for tok in linea.split():
+            datos.append(int(tok, 16))
     return datos
+
+
+def _cargar_assembler() -> ModuleType:
+    """Imports ``asm/assembler.py`` (it is not a package, so the path is adjusted)."""
+    ruta = str(Path(__file__).resolve().parent.parent / "asm")
+    if ruta not in sys.path:
+        sys.path.insert(0, ruta)
+    import assembler
+
+    return assembler
 
 
 def leer_fuente(path: Path) -> list[int]:
     """Accepts an ``.asm`` (assembles it) or a ``.hex`` (reads it)."""
     if path.suffix == ".asm":
-        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "asm"))
-        import assembler  # noqa: E402
-
-        return assembler.ensamblar(path.read_text())[0]
+        return _cargar_assembler().ensamblar(path.read_text())[0]
     return leer_hex(path)
 
 
 def _offset(n: int) -> str:
     """Signed indexed displacement for readability (two's complement if n > 127)."""
     return f"{n - 256:+d}" if n > 127 else f"{n:+d}"
+
+
+def _db(bs: Sequence[int]) -> str:
+    """``.db`` directive that emits exactly the given bytes."""
+    return ".db " + ", ".join(f"0x{x:02X}" for x in bs)
 
 
 def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
@@ -83,43 +102,64 @@ def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
     xb = mem[i + 1] if i + 1 < len(mem) else 0
     xop, rd, rs = xb >> 4, (xb >> 2) & 3, xb & 3
     off = mem[i + 2] if i + 2 < len(mem) else 0
-    if xop == _XOP_NEG:
-        return f"NEG {REGS[rd]}", 2
-    if xop == _XOP_NOT:
-        return f"NOT {REGS[rd]}", 2
+    if xop in (_XOP_NEG, _XOP_NOT, _XOP_ROL, _XOP_ROR):
+        # Unary: only rd is used; rs is ignored by the RTL, so keep it as .db.
+        if rs != 0:
+            return _db([0xFA, xb]), 2
+        m = {_XOP_NEG: "NEG", _XOP_NOT: "NOT", _XOP_ROL: "ROL", _XOP_ROR: "ROR"}[xop]
+        return f"{m} {REGS[rd]}", 2
+    if xop in (_XOP_PUSHF, _XOP_POPF, _XOP_RETI):
+        # No operands: rd/rs must be zero (otherwise the bits would be lost).
+        if rd != 0 or rs != 0:
+            return _db([0xFA, xb]), 2
+        return {_XOP_PUSHF: "PUSHF", _XOP_POPF: "POPF", _XOP_RETI: "RETI"}[xop], 2
+    if xop in (_XOP_ADCW, _XOP_SUBW):
+        # 16-bit pairs: the assembler only accepts A (:B) and C (:D).
+        if rd & 1 or rs & 1:
+            return _db([0xFA, xb]), 2
+        m = "ADCW" if xop == _XOP_ADCW else "SUBW"
+        return f"{m} {REGS[rd]}, {REGS[rs]}", 2
     if xop == _XOP_ADC:
         return f"ADC {REGS[rd]}, {REGS[rs]}", 2
     if xop == _XOP_SBC:
         return f"SBC {REGS[rd]}, {REGS[rs]}", 2
     if xop == _XOP_SWAP:
         return f"SWAP {REGS[rd]}, {REGS[rs]}", 2
-    if xop == _XOP_ROL:
-        return f"ROL {REGS[rd]}", 2
-    if xop == _XOP_ROR:
-        return f"ROR {REGS[rd]}", 2
     if xop == _XOP_LDW:
         return f"LDW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
     if xop == _XOP_STW:
         return f"STW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
     if xop == _XOP_TEST:
         return f"TEST {REGS[rd]}, {REGS[rs]}", 2
-    if xop == _XOP_PUSHF:
-        return "PUSHF", 2
-    if xop == _XOP_POPF:
-        return "POPF", 2
-    if xop == _XOP_ADCW:
-        return f"ADCW {REGS[rd]}, {REGS[rs]}", 2
-    if xop == _XOP_SUBW:
-        return f"SUBW {REGS[rd]}, {REGS[rs]}", 2
-    if xop == _XOP_RETI:
-        return "RETI", 2
     return f".db 0xFA, 0x{xb:02X}", 2
 
 
+def _longitud(mem: list[int], i: int) -> int:
+    """Bytes the encoding at ``mem[i]`` needs, even if the buffer is truncated."""
+    b = mem[i]
+    op = b >> 4
+    if op in (0x1, 0x3, 0x4, 0xC, 0xD):
+        return 2
+    if op != 0xF:
+        return 1
+    if b == 0xFA:
+        xb = mem[i + 1] if i + 1 < len(mem) else 0
+        return 3 if (xb >> 4) in (_XOP_LDW, _XOP_STW) else 2
+    return 2 if 0xF4 <= b <= 0xF9 else 1
+
+
 def decodificar(mem: list[int], i: int) -> tuple[str, int]:
-    """Decodes the instruction at ``mem[i]``; returns ``(text, length)``."""
+    """Decodes the instruction at ``mem[i]``; returns ``(text, length)``.
+
+    If the buffer ends in the middle of an instruction, the bytes that are
+    present are emitted as ``.db`` so that reassembling the listing reproduces
+    the original image exactly.
+    """
     b = mem[i]
     op, rd, rs = b >> 4, (b >> 2) & 3, b & 3
+    necesario = _longitud(mem, i)
+    if i + necesario > len(mem):
+        return _db(mem[i:]), len(mem) - i
     sig = mem[i + 1] if i + 1 < len(mem) else 0
 
     if op == 0x0:
@@ -136,13 +176,22 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
     if op in _ALU:
         return f"{_ALU[op]} {REGS[rd]}, {REGS[rs]}", 1
     if op == 0xB:
+        # The RTL uses only rs[0] (alu_sh = rs[0]); with rs[1] set the byte is
+        # an alias that a mnemonic would normalise away: keep it with .db.
+        if rs & 0b10:
+            return _db([b]), 1
         return f"{'SHL' if rs & 1 == 0 else 'SHR'} {REGS[rd]}", 1
     if op == 0xC:
-        m = {0b00: "JMP", 0b01: "CALL"}.get(rs)
-        if m is not None:
+        # Only rd=00 (and rs=00/01) is a real JMP/CALL: the rest are reserved
+        # encodings or aliases whose rd bits the RTL ignores.
+        if rd == 0 and rs in (0b00, 0b01):
+            m = "JMP" if rs == 0 else "CALL"
             return f"{m} L_{sig:04X}", 2
-        return f".db 0x{b:02X}, 0x{sig:02X}", 2
+        return _db([b, sig]), 2
     if op == 0xD:
+        # Family 11 is an alias of family 10 in the RTL; do not print it.
+        if rd == 0b11:
+            return _db([b, sig]), 2
         return f"{_JCC[rd][rs]} L_{sig:04X}", 2
     if op == 0xE:
         if rs == 0:
@@ -159,6 +208,10 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
             return "EI", 1
         if b == 0xF3:
             return "DI", 1
+        if 0xF4 <= b <= 0xF9 and sig > 0x0F:
+            # Only the low nibble of the 2nd byte is used (rd/rs/port): the
+            # high bits are ignored by the RTL, so keep the bytes with .db.
+            return _db([b, sig]), 2
         if b in (0xF4, 0xF5):
             m = "LD" if b == 0xF4 else "ST"
             return f"{m} {REGS[(sig >> 2) & 3]}, [{REGS[sig & 3]}]", 2
@@ -174,29 +227,54 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
     return f".db 0x{b:02X}", 1  # unreachable (op is 0..F)
 
 
-def _destinos(mem: list[int]) -> set[int]:
-    """JMP/CALL/Jcc target addresses (to label them)."""
-    destinos: set[int] = set()
+def _inicios(mem: list[int]) -> set[int]:
+    """Addresses where an instruction starts (linear decode from 0)."""
+    inicios: set[int] = set()
     i = 0
     while i < len(mem):
-        b = mem[i]
-        op = b >> 4
+        inicios.add(i)
         _, ln = decodificar(mem, i)
-        if (op == 0xC and (b & 3) in (0, 1) and i + 1 < len(mem)) or op == 0xD:
-            destinos.add(mem[i + 1])
         i += ln
+    return inicios
+
+
+def _es_salto(b: int) -> bool:
+    """True if ``b`` is a JMP/CALL/Jcc decoded with a label operand."""
+    op = b >> 4
+    if op == 0xC:
+        return (b & 0x0C) == 0 and (b & 0x03) < 2
+    return op == 0xD and (b & 0x0C) != 0x0C
+
+
+def _destinos(mem: list[int]) -> set[int]:
+    """JMP/CALL/Jcc target addresses that are starts of an instruction."""
+    inicios = _inicios(mem)
+    destinos: set[int] = set()
+    for i in inicios:
+        if _es_salto(mem[i]) and i + 1 < len(mem) and mem[i + 1] in inicios:
+            destinos.add(mem[i + 1])
     return destinos
+
+
+def _texto(mem: list[int], i: int, inicios: set[int] | None) -> tuple[str, int]:
+    """Decoded text at ``i``; a jump to a non-instruction becomes ``.db`` bytes."""
+    texto, ln = decodificar(mem, i)
+    if inicios is not None and _es_salto(mem[i]):
+        if i + 1 >= len(mem) or mem[i + 1] not in inicios:
+            return _db(mem[i : i + ln]), ln
+    return texto, ln
 
 
 def desensamblar(mem: list[int], etiquetas: bool = True) -> list[str]:
     """Returns the listing line by line."""
     destinos = _destinos(mem) if etiquetas else set()
+    inicios = _inicios(mem) if etiquetas else None
     lineas: list[str] = []
     i = 0
     while i < len(mem):
         if i in destinos:
             lineas.append(f"L_{i:04X}:")
-        texto, ln = decodificar(mem, i)
+        texto, ln = _texto(mem, i, inicios)
         bs = " ".join(f"{x:02X}" for x in mem[i : i + ln])
         lineas.append(f"  {i:04X}: {bs:<8} {texto}")
         i += ln
@@ -206,12 +284,13 @@ def desensamblar(mem: list[int], etiquetas: bool = True) -> list[str]:
 def desensamblar_crudo(mem: list[int], etiquetas: bool = True) -> list[str]:
     """Returns only the reassemblable source code (no addresses or bytes)."""
     destinos = _destinos(mem) if etiquetas else set()
+    inicios = _inicios(mem) if etiquetas else None
     lineas: list[str] = []
     i = 0
     while i < len(mem):
         if i in destinos:
             lineas.append(f"L_{i:04X}:")
-        texto, ln = decodificar(mem, i)
+        texto, ln = _texto(mem, i, inicios)
         lineas.append(f"        {texto}")
         i += ln
     return lineas
@@ -222,15 +301,32 @@ def main(argv: list[str]) -> int:
     salida: Path | None = None
     if "-o" in args:
         k = args.index("-o")
+        if k + 1 >= len(args):
+            print("error: -o requires an output file", file=sys.stderr)
+            return 2
         salida = Path(args[k + 1])
         del args[k : k + 2]
     if not args:
         print(__doc__)
         return 2
-    mem = leer_fuente(Path(args[0]))
+
+    ensamblador = _cargar_assembler()
+    try:
+        mem = leer_fuente(Path(args[0]))
+    except OSError as exc:
+        print(f"error: cannot read '{args[0]}': {exc}", file=sys.stderr)
+        return 2
+    except ensamblador.AssemblerError as exc:
+        print(f"error: {args[0]}: {exc}", file=sys.stderr)
+        return 2
+
     texto = "\n".join(desensamblar(mem)) + "\n"
     if salida is not None:
-        salida.write_text(texto)
+        try:
+            salida.write_text(texto)
+        except OSError as exc:
+            print(f"error: cannot write '{salida}': {exc}", file=sys.stderr)
+            return 2
         print(f"Listing written to {salida}")
     else:
         sys.stdout.write(texto)

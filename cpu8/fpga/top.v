@@ -19,7 +19,7 @@ module top (
     wire rst = ~por[3];
 
     always @(posedge clk)
-        if (!por[3]) por <= por + 4'd1;
+        if (por != 4'hF) por <= por + 4'd1;
 
     // The CPU (no interrupts in this demo).
     wire        halted;

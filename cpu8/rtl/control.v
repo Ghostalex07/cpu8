@@ -26,7 +26,7 @@
 //  Interrupts: if flag I (enabled by EI=0xF2) is 1 and the irq input is 1 at
 //  the beginning of an instruction, it is serviced in S_IRQ: the return PC is
 //  pushed, I is cleared and it jumps to IRQ_VECTOR.  The handler ends with RET.
-//  Only the PC is saved (not the flags).
+//  The PC is pushed on the stack; C,Z,N,V are saved in a shadow register.
 //
 //  Opcode group 0x0 (1 byte): suboperation in rd[3:2], register in rs[1:0]:
 //      00 = INC, 01 = DEC, 10 = PUSH, 11 = POP
@@ -271,7 +271,7 @@ module control (
                 pc_load      = 1'b1;
                 pc_from_vec  = 1'b1;   // PC <= IRQ_VECTOR
                 flag_i_clear = 1'b1;   // prevents nested interrupts
-                flag_save    = 1'b1;   // RETI will restore C,Z,N,V,I
+                flag_save    = 1'b1;   // RETI restores C,Z,N,V (I stays 0)
                 nstate       = S_FETCH;
             end
 
@@ -400,7 +400,7 @@ module control (
                             sel_one  = 1'b1;
                             rf_we    = 1'b1;
                             rf_waddr = rs;
-                            flags_we = 1'b1;     // Z and N yes; C no (no flags_c_we)
+                            flags_we = 1'b1;     // Z, N and V; C is preserved (no flags_c_we)
                         end else if (is_push) begin
                             ram_we     = 1'b1;
                             sel_ram_rs = 1'b1;   // data = rs

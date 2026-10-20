@@ -78,10 +78,9 @@ PROG ?= $(PROG_DIR)/countdown
 # FPGA: folder with the top and the constraints; program to synthesize.
 FPGA_DIR  = fpga
 # Verilog sources covered by `make fmt` / `make fmt-check`.
-V_FILES  = $(RTL_DIR)/*.v $(TB_DIR)/*.v $(FPGA_DIR)/*.v
+V_FILES  = $(RTL_DIR)/*.v $(TB_DIR)/*.v $(TB_DIR)/verilator/*.v $(FPGA_DIR)/*.v
 FPGA_PROG ?= countdown
 
-.PHONY: all test modtests progtests irqtest sim wave asm verilator vlint fpga clean dirs help trace disasm debug pytools regress regress-update difftest
 
 all: test
 
@@ -176,10 +175,7 @@ debug:
 
 ## --- Tests for the Python tools (assembler + ISA table + disassembler + ISS + debugger) ---
 pytools:
-	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
-	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py \
-	  $(TOOLS_DIR)/test_debugger.py $(TOOLS_DIR)/test_fpga_report.py \
-	  $(TOOLS_DIR)/test_coverage_report.py -q
+	$(PYTHON) -m pytest $(ASM_DIR) $(TOOLS_DIR) -q
 
 ## --- Lint of the Python code with Ruff (config in ruff.toml) ---
 lint:
@@ -201,7 +197,7 @@ docs-check:
 ##      make difftest ONLYPROGS=1     (only the programs/*.asm)
 difftest: dirs
 	$(PYTHON) $(TOOLS_DIR)/difftest.py --count $(if $(COUNT),$(COUNT),100) \
-	  --seed $(if $(SEED),$(SEED),1) $(if $(ONLYPROGS),--progs,)
+	  --seed $(if $(SEED),$(SEED),1) $(if $(filter 1,$(ONLYPROGS)),--progs,)
 
 ## --- Regression harness: bytes + golden traces + round-trip fuzz ---
 regress: dirs
@@ -226,8 +222,8 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 	  base=$${p%.asm}; \
 	  echo "=== verilator: $$(basename $$base) ==="; \
 	  $(PYTHON) $(ASM_DIR)/assembler.py $$p; \
-	  if [ -f $$base.ref ]; then $(VL_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref; \
-	  else $(VL_DIR)/Vcpu_sim +hex=$$base.hex; fi; \
+	  if [ ! -f $$base.ref ]; then echo "missing $$base.ref"; exit 1; fi; \
+	  $(VL_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref; \
 	  echo ""; \
 	done; \
 	echo "=== verilator: irq ==="; \
@@ -257,13 +253,9 @@ coverage: dirs $(COV_DIR)/Vcpu_sim
 	  base=$${p%.asm}; name=$$(basename $$base); \
 	  echo "=== coverage: $$name ==="; \
 	  $(PYTHON) $(ASM_DIR)/assembler.py $$p; \
-	  if [ -f $$base.ref ]; then \
-	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref \
-	      +cov=$(COV_DIR)/cov_$$name.dat >/dev/null; \
-	  else \
-	    $(COV_DIR)/Vcpu_sim +hex=$$base.hex \
-	      +cov=$(COV_DIR)/cov_$$name.dat >/dev/null; \
-	  fi; \
+	  if [ ! -f $$base.ref ]; then echo "missing $$base.ref"; exit 1; fi; \
+	  $(COV_DIR)/Vcpu_sim +hex=$$base.hex +exp=$$base.ref \
+	    +cov=$(COV_DIR)/cov_$$name.dat >/dev/null; \
 	done; \
 	echo "=== coverage: irq ==="; \
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
@@ -312,7 +304,7 @@ fpga: dirs
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/$(FPGA_PROG).asm; \
 	cp $(PROG_DIR)/$(FPGA_PROG).hex $(FPGA_DIR)/program.hex; \
 	echo "=== FPGA: synthesis (yosys) ==="; \
-	$(YOSYS) -p "read_verilog -DRAM_INIT -DFPGA_RAM64 $(wildcard $(RTL_DIR)/*.v) $(FPGA_DIR)/top.v; synth_ice40 -top top -json $(BUILD)/top.json"; \
+	$(YOSYS) -p "read_verilog -DRAM_INIT $(wildcard $(RTL_DIR)/*.v) $(FPGA_DIR)/top.v; synth_ice40 -top top -json $(BUILD)/top.json"; \
 	echo "=== FPGA: place & route (nextpnr) ==="; \
 	$(NEXTPNR) --hx1k --package tq144 --json $(BUILD)/top.json \
 	  --pcf $(FPGA_DIR)/icestick.pcf --asc $(BUILD)/top.asc; \
@@ -340,10 +332,9 @@ formal: dirs
 	@echo "formal: all proofs passed"
 
 clean:
-	rm -rf $(BUILD)
-	rm -rf $(FORMAL_DIR)/alu $(FORMAL_DIR)/control
+	rm -rf $(BUILD) $(FORMAL_DIR)/*/ $(FPGA_DIR)/program.hex
 
-.PHONY: all test modtests irqtest progtests asm sim wave trace disasm debug \
+.PHONY: all dirs test modtests progtests irqtest asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest regress regress-update verilator \
 	coverage vlint fmt fmt-check fpga fpga-check formal clean help check
 
@@ -365,7 +356,7 @@ help:
 	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"
 	@echo "make disasm PROG=programs/<name>   (disassembles the .hex to a listing)"
 	@echo "make debug PROG=programs/<name>    (interactive debugger: step/breakpoints/watch)"
-	@echo "make pytools                       (pytest for assembler, ISA table, disassembler, ISS and debugger)"
+	@echo "make pytools                       (pytest: assembler, ISA table, disassembler, ISS, debugger, reports)"
 	@echo "make lint                          (ruff: lint of the Python code)"
 	@echo "make docs                          (regenerates docs/OPCODES.md from the ISA table)"
 	@echo "make docs-check                    (checks that docs/OPCODES.md is up to date)"

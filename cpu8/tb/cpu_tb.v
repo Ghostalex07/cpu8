@@ -153,8 +153,9 @@ module cpu_tb;
             $display("  Outputs emitted: %0d (no expected list, not compared)", nout);
         end
 
-        if (errors == 0) $display("CPU: ALL TESTS PASSED");
-        else             $display("CPU: %0d FAILURES", errors);
+        if (errors != 0)      $display("CPU: %0d FAILURES", errors);
+        else if (use_exp)     $display("CPU: ALL TESTS PASSED");
+        else                  $display("CPU: NO EXPECTED LIST (nothing compared)");
 
         if (errors != 0) $fatal(1, "CPU: there are failures, check above");
         $finish;

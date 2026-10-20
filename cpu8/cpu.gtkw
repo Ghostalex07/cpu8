@@ -2,7 +2,7 @@
 [*] GTKWave Analyzer v3.3.104 (w)1999-2022 BSI
 [*] cpu8 - ciclo de instruccion (fetch / operand / execute)
 [*]
-[dumpfile] "/home/vaca/proyectos/cpu/cpu8/build/cpu_tb.vcd"
+[dumpfile] "build/cpu_tb.vcd"
 [timestart] 0
 [size] 1280 800
 [pos] -1 -1
@@ -15,8 +15,8 @@
 cpu_tb.clk
 cpu_tb.rst
 @22
-cpu_tb.dut.u_ctrl.state[1:0]
-cpu_tb.dut.u_ctrl.nstate[1:0]
+cpu_tb.dut.u_ctrl.state[2:0]
+cpu_tb.dut.u_ctrl.nstate[2:0]
 cpu_tb.dut.fetching
 cpu_tb.dut.pc_q[7:0]
 @28

@@ -14,6 +14,7 @@ Usage::
 
 from __future__ import annotations
 
+import math
 import re
 import sys
 from pathlib import Path
@@ -64,6 +65,9 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 2
         del args[index : index + 2]
+        if not math.isfinite(minimum):
+            print("coverage_report: --min must be a finite number", file=sys.stderr)
+            return 2
     if len(args) != 1:
         print(
             "usage: coverage_report.py [--min PCT] <coverage.info>",

@@ -25,7 +25,7 @@ module ram_tb;
     integer errors = 0;
 
     ram dut (
-        .clk(clk), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata)
+        .clk(clk), .rst(1'b0), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata)
     );
 
     always #5 clk = ~clk;

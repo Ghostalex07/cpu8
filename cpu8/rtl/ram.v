@@ -12,25 +12,24 @@
 //
 //  The memory is initialized with `$readmemh("file.hex", ram.mem)`, which loads
 //  one byte per line (the format our assembler will generate). It has no reset:
-//  the content is whatever $readmemh loads (or undefined if not loaded).
+//  the content is whatever $readmemh loads (or undefined if not loaded).  The
+//  synchronous write is inhibited while `rst` is high, so a reset that lands in
+//  the middle of a ST/PUSH/CALL cycle cannot commit the store.
 // ============================================================================
 `timescale 1ns/1ps
 `default_nettype none
 
 module ram (
     input  wire       clk,     // system clock
+    input  wire       rst,     // reset (inhibits writes, keeps the contents)
     input  wire       we,      // write enable (active high)
     input  wire [7:0] addr,    // address (0..255)
     input  wire [7:0] wdata,   // data to write
     output reg  [7:0] rdata    // read data (registered on the falling edge)
 );
 
-    // 256 locations of 8 bits.
-`ifdef FPGA_RAM64
-    reg [7:0] mem [0:63];
-`else
+    // 256 locations of 8 bits (one SB_RAM40_4K on the iCE40).
     reg [7:0] mem [0:255];
-`endif
 
 `ifdef RAM_INIT
     // Initialization ONLY for FPGA synthesis (Phase 7.6): loads the program
@@ -39,9 +38,9 @@ module ram (
     initial $readmemh("fpga/program.hex", mem);
 `endif
 
-    // Synchronous write.
+    // Synchronous write, inhibited during reset (see the header comment).
     always @(posedge clk) begin
-        if (we) mem[addr] <= wdata;
+        if (we && !rst) mem[addr] <= wdata;
     end
 
     // Read registered on the falling edge (half a cycle of latency): the

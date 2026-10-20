@@ -313,6 +313,25 @@ def parsear_numero(tok: str) -> int:
     return signo * valor
 
 
+def _cortar_comentario(texto: str) -> str:
+    """Removes a ``;`` comment, ignoring semicolons inside string literals."""
+    en_cadena = False
+    esc = False
+    for i, ch in enumerate(texto):
+        if en_cadena:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                en_cadena = False
+        elif ch == '"':
+            en_cadena = True
+        elif ch == ";":
+            return texto[:i]
+    return texto
+
+
 def parsear_linea(texto: str) -> tuple[str | None, str | None, list[str]]:
     """Parses a source line and returns ``(label, mnemonic, operands)``.
 
@@ -320,9 +339,9 @@ def parsear_linea(texto: str) -> tuple[str | None, str | None, list[str]]:
     * ``mnemonico``: str in uppercase or ``None`` (empty line / label only).
     * ``operandos``: list of tokens (str), without commas or outer brackets.
     """
-    # Comments (';') run to the end of the line (ISA §8).
-    if ";" in texto:
-        texto = texto.split(";", 1)[0]
+    # Comments (';') run to the end of the line (ISA §8), but a ';' inside a
+    # string literal (`.db "a; b"`) is data.
+    texto = _cortar_comentario(texto)
 
     etiqueta = None
     m = _RE_ETIQUETA.match(texto)
@@ -392,16 +411,16 @@ def resolver_valor(resolver: Callable[[str], int], tok: str, num_linea: int) -> 
         raise AssemblerError(num_linea, f"invalid value '{tok}': {e}") from e
 
 
-def es_indirecto(op: str, etiquetas: Mapping[str, int]) -> bool:
+def es_indirecto(op: str, etiquetas: Mapping[str, int], constantes: Mapping[str, int] = {}) -> bool:
     """Indicates whether ``op`` is a pointer register (indirect mode ``LD/ST rd,[rs]``).
 
-    Disambiguation rule: a **label name** (case-sensitive) takes priority over a
-    register name (case-insensitive).  Thus, with a label ``b`` defined,
-    ``LD A, [b]`` is a direct access to address ``b``; while ``LD A, [B]``
-    (without a label ``B``) is still the indirect mode with register ``B``.
-    Without a collision, ``[B]`` is indirect.
+    Disambiguation rule: a **label** or **constant** name (case-sensitive) takes
+    priority over a register name (case-insensitive).  Thus, with ``.equ B, 0x30``
+    or a label ``b`` defined, ``LD A, [B]`` is a direct access to that address;
+    while ``LD A, [B]`` without such a name is the indirect mode with register
+    ``B``.
     """
-    return op not in etiquetas and op.upper() in REGISTROS
+    return op not in etiquetas and op not in constantes and op.upper() in REGISTROS
 
 
 def codificar(
@@ -410,6 +429,7 @@ def codificar(
     operandos: Sequence[str],
     resolver: Callable[[str], int],
     etiquetas: Mapping[str, int],
+    constantes: Mapping[str, int] = {},
 ) -> list[int]:
     """Returns the list of bytes of an instruction.
 
@@ -441,6 +461,12 @@ def codificar(
         # (base A) cannot be used because that value encodes the absolute mode.
         m_idx = _RE_INDEXADO.fullmatch(op2)
         if m_idx and m_idx.group(1) not in etiquetas:
+            if m_idx.group(1) in constantes:
+                raise AssemblerError(
+                    num_linea,
+                    f"constant '{m_idx.group(1)}' cannot be used as an indexed base "
+                    "(use a register B, C or D)",
+                )
             base = m_idx.group(1).upper()
             if base not in REGISTROS:
                 raise AssemblerError(
@@ -461,7 +487,7 @@ def codificar(
                 off = (-off) & 0xFF  # negative displacement (two's complement)
             return [((OP_LD if mnem == "LD" else OP_ST) << 4) | (rd << 2) | REGISTROS[base], off]
         # If the 2nd operand is a register -> indirect: LD/ST rd,[rs].
-        if es_indirecto(op2, etiquetas):
+        if es_indirecto(op2, etiquetas, constantes):
             rs = REGISTROS[op2.upper()]
             byte1 = OP_IND_LD if mnem == "LD" else OP_IND_ST
             return [byte1, (rd << 2) | rs]
@@ -554,6 +580,12 @@ def codificar(
         op2 = operandos[1]
         m_idx = _RE_INDEXADO.fullmatch(op2)
         if m_idx and m_idx.group(1) not in etiquetas:
+            if m_idx.group(1) in constantes:
+                raise AssemblerError(
+                    num_linea,
+                    f"constant '{m_idx.group(1)}' cannot be used as an indexed base "
+                    "(use a register A, B, C or D)",
+                )
             rs = indice_registro(m_idx.group(1), num_linea)
             expr = (m_idx.group(3) or "").strip()
             if not expr:
@@ -561,7 +593,12 @@ def codificar(
             off = resolver_valor(resolver, expr, num_linea)
             if m_idx.group(2) == "-":
                 off = (-off) & 0xFF  # negative displacement
-        elif not m_idx and _RE_IDENTIFICADOR.fullmatch(op2) and op2 not in etiquetas:
+        elif (
+            not m_idx
+            and _RE_IDENTIFICADOR.fullmatch(op2)
+            and op2 not in etiquetas
+            and op2 not in constantes
+        ):
             rs = indice_registro(op2, num_linea)  # plain [rs]: off = 0
             off = 0
         else:
@@ -638,7 +675,7 @@ _ESCAPES: Final[dict[str, int]] = {
 
 def _resto_operandos(texto: str) -> str:
     """Returns the text after the mnemonic, without comment or label."""
-    sin_com = texto.split(";", 1)[0]
+    sin_com = _cortar_comentario(texto)
     m = _RE_ETIQUETA.match(sin_com)
     if m:
         sin_com = m.group(2)
@@ -730,7 +767,7 @@ def ensamblar(
     # ---- Pass 0: constants (.equ) ------------------------------------------
     constantes: dict[str, int] = {}
 
-    def resolver_const(tok: str, num_linea: int) -> int:
+    def resolver_const(tok: str, num_linea: int, *, unsigned: bool = False) -> int:
         if tok in constantes:
             return constantes[tok]
         try:
@@ -739,6 +776,8 @@ def ensamblar(
             if _RE_IDENTIFICADOR.fullmatch(tok):
                 raise AssemblerError(num_linea, f"undefined constant '{tok}'") from None
             raise AssemblerError(num_linea, f"invalid value '{tok}'") from None
+        if unsigned and bruto < 0:
+            raise AssemblerError(num_linea, f"value {bruto} out of range 0..255")
         return _comprobar_rango(bruto, num_linea)
 
     for i, _etq, mnem, ops, _texto in crudas:
@@ -764,6 +803,10 @@ def ensamblar(
         if etiqueta is not None:
             if etiqueta in etiquetas:
                 raise AssemblerError(i, f"duplicated label '{etiqueta}'")
+            if etiqueta in constantes:
+                raise AssemblerError(
+                    i, f"label '{etiqueta}' collides with a constant of the same name"
+                )
             etiquetas[etiqueta] = pc
 
         if mnem is None or mnem == ".EQU":
@@ -772,13 +815,17 @@ def ensamblar(
         if mnem == ".ORG":
             if len(ops) != 1:
                 raise AssemblerError(i, ".org expects an address")
-            destino = resolver_const(ops[0], i)
+            destino = resolver_const(ops[0], i, unsigned=True)
             if destino < pc:
                 raise AssemblerError(
                     i, f".org 0x{destino:02X} goes backwards (PC is already 0x{pc:02X})"
                 )
             plan.append(("org", destino, i, texto))
             pc = destino
+            if pc > 256 and linea_overflow is None:
+                linea_overflow = i
+            if pc > TOPE_PILA - MARGEN_PILA and linea_pila is None:
+                linea_pila = i
             continue
 
         if mnem == ".DB":
@@ -898,7 +945,7 @@ def ensamblar(
             listado.append((dir_dw, bs_w, texto_dw))
         else:
             st = entrada[1]
-            bs = codificar(st.linea, st.mnem, st.ops, resolver, etiquetas)
+            bs = codificar(st.linea, st.mnem, st.ops, resolver, etiquetas, constantes)
             salida.extend(bs)
             listado.append((st.dir, bs, st.texto))
 

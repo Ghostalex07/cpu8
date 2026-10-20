@@ -85,7 +85,7 @@ The project does not publish numbered releases yet, so changes are grouped under
   design is calibrated with — the distro nextpnr 0.6 places the design at 11.35 MHz
   and aborts before the check even runs), runs `make fpga` on the iCE40HX1K and
   then `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds
-  80 % of the logic cells or misses the 12 MHz timing target (currently 826/1280
+  80 % of the logic cells or misses the 12 MHz timing target (currently 845/1280
   LCs, ~14.9 MHz). `make fpga-check` runs the same check locally. The Makefile now
   also finds `nextpnr-ice40` and `icepack` from YoWASP on the `PATH`.
 - **CI caching and artefacts**: pip caching keyed on
@@ -122,10 +122,55 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Changed
 
-- `make pytools` now includes the ISA table tests and the debugger tests.
+- `make pytools` now collects every test under `asm/` and `tools/` instead of a
+  hard-coded list, so a new `test_*.py` runs in CI without editing the Makefile.
+- `make clean` also removes every `formal/*/` work directory and the generated
+  `fpga/program.hex`; `V_FILES` includes `tb/verilator/cpu_sim.v` so `make fmt`
+  and `make fmt-check` cover the co-simulation harness too.
+- The CI `test` job uploads `build/difftest-fallos/` and `build/regress/` when it
+  fails, and the workflow declares `permissions: contents: read` plus
+  `workflow_dispatch`.
+- Documentation: the ISA now describes the reserved-encoding aliases (Jcc family
+  `11`, ignored `SHL`/`SHR` and `JMP` bits), HLT vs. a pending interrupt, the
+  shared `in_port` bus during `OUT n,rd` and the 8-bit `SP` wrap; INC/DEC are
+  documented as updating `V`; instruction words are 1, 2 or 3 bytes; `.ref`
+  files are described as the complete output sequence.
 
 ### Fixed
 
+- `rtl/ram.v`: a synchronous reset no longer commits a pending write (ST, PUSH,
+  CALL, PUSHF, STW or the interrupt push landed in RAM on the reset edge).
+- The FPGA build now uses the full 256-byte RAM (the `FPGA_RAM64` variant
+  aliased every address modulo 64, moved `SP` to `0x3F` and silently truncated
+  programs longer than 64 bytes). A fresh build uses 845/1280 LCs at 14.91 MHz.
+- `tools/disasm.py`: an image ending in a conditional jump no longer raises
+  `IndexError`; reserved and aliased encodings disassemble to `.db` so the
+  round trip is byte-identical; truncated instructions are emitted as bytes;
+  jump targets that do not start an instruction no longer produce undefined
+  labels; `main` exits with status 2 on bad input.
+- `asm/assembler.py`: `.db "a; b"` keeps the semicolon inside the string; a
+  label and a constant can no longer share a name silently; a constant named
+  like a register (`[B]`) is treated as a direct address, consistently with
+  immediates; `.org` now applies the 256-byte and stack-margin checks.
+- `tools/debugger.py`: watchpoints are checked on the interrupt cycle; `-e`
+  returns a non-zero status when a command fails; out-of-range addresses and
+  non-positive counts are rejected; `until 08` accepts decimal addresses with
+  leading zeros.
+- `tools/iss.py`: `_leer_hex` ignores `;`/`//` comments and the CLI reports a
+  missing file or a bad `--max` with status 2.
+- `tools/difftest.py`: a demo program that does not assemble is a failure (it
+  used to be a silent SKIP with exit status 0), a generated program that does
+  not assemble is reported instead of crashing, the failure directory is cleaned
+  at the start and a run with nothing tested is not reported as OK.
+- `tools/coverage_report.py`: `--min nan`/`inf` is rejected instead of always
+  passing or always failing; `tools/regress.py` reports a missing `--fuzz`
+  value with status 2.
+- Testbenches: `cpu_tb` no longer prints `ALL TESTS PASSED` when no `+exp` list
+  was loaded, `irq_tb` uses the same policy instead of failing a run without a
+  reference, and the Verilator harness returns 1 when `+exp` is unreadable or
+  empty. `make verilator`/`make coverage` now require a `.ref` for every demo.
+- `cpu8/cpu.gtkw` uses a relative dump path and selects `state[2:0]`/`nstate[2:0]`
+  (7-state FSM).
 - `tools/regress.py`: removed ambiguous names (`E741`) flagged by `ruff`.
 
 ## Earlier milestones

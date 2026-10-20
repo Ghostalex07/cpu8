@@ -44,7 +44,13 @@ int main(int argc, char** argv) {
     }
 
     std::vector<unsigned> esperadas;
-    if (expfile) esperadas = cargar_ref(expfile);
+    if (expfile) {
+        esperadas = cargar_ref(expfile);
+        if (esperadas.empty()) {
+            printf("ERROR: the expected list '%s' is empty or unreadable\n", expfile);
+            return 1;
+        }
+    }
 
     Vcpu_sim* top = new Vcpu_sim;             // the RTL is evaluated on construction
 

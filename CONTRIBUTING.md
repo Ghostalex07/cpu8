@@ -24,7 +24,8 @@ The `Makefile` is in `cpu8/`; run the commands from that folder.
 
 ## Running the checks
 
-Before submitting changes, run the **full suite** (the same one CI runs):
+Before submitting changes, run the checks of the **CI test job** (the
+`formal`, `fpga` and `coverage` jobs run separately):
 
 ```bash
 cd cpu8
@@ -36,7 +37,7 @@ Piece by piece:
 ```bash
 make test          # module testbenches + demo programs + interrupts
 make vlint         # RTL lint with Verilator -Wall (must stay clean)
-make pytools       # pytest: assembler, ISA table, disassembler and ISS
+make pytools       # pytest: assembler, ISA table, disassembler, ISS, debugger, FPGA report and coverage report
 make lint          # ruff over the Python code
 make difftest      # differential RTL-vs-reference-model fuzzing
 make regress       # byte + trace regression + round-trip fuzzing

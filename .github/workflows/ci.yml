@@ -1,10 +1,16 @@
 name: CI
 
+# The jobs only need to read the repository (checkout and local tools); no job
+# writes to the API, so keep the default token read-only.
+permissions:
+  contents: read
+
 on:
   push:
     branches: [ main, master ]
   pull_request:
     branches: [ main, master ]
+  workflow_dispatch:
 
 # Cancel the superseded runs of a branch/PR that is being pushed to quickly;
 # a run that is already on main is never cancelled.
@@ -70,6 +76,25 @@ jobs:
 
       - name: Regression harness (bytes + trace + fuzz)
         run: make regress
+
+      # Both harnesses save the failing programs (and their traces) under
+      # build/; the short console output is not enough to reproduce a failure,
+      # so keep them when the job fails.
+      - name: Upload the differential fuzz failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: difftest-failures
+          path: cpu8/build/difftest-fallos/
+          if-no-files-found: ignore
+
+      - name: Upload the regression failures
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: regress-failures
+          path: cpu8/build/regress/
+          if-no-files-found: ignore
 
   # The ALU equivalence and FSM proofs are fast (~1 min) but need a solver and
   # the YoWASP Yosys/SymbiYosys stack, so they get their own job.

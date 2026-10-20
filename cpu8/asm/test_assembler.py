@@ -580,3 +580,44 @@ def test_main_devuelve_uno_con_error(tmp_path: Path) -> None:
     fuente.write_text("JMP nope\n")
     rc = assembler.main([str(fuente), "-o", str(tmp_path / "p.hex")])
     assert rc == 1
+
+
+def test_una_etiqueta_no_puede_tapar_una_constante() -> None:
+    # Pass 0 builds the constants and pass 1 the labels; a shared name would
+    # silently resolve to the label in pass 2.
+    with pytest.raises(assembler.AssemblerError, match="collides with a constant"):
+        asm(".equ K, 5\nK: HLT\nLDI A, K\n")
+
+
+def test_una_constante_llamada_como_registro_es_una_direccion_directa() -> None:
+    # `.equ B, 0x30` wins over the register name inside brackets, the same way
+    # it already wins in an immediate operand (no silent indirect mode).
+    assert asm(".equ B, 0x30\nLD A, [B]\n") == [0x30, 0x30]
+
+
+def test_org_no_puede_saltar_el_limite_de_la_pila() -> None:
+    with pytest.raises(assembler.AssemblerError, match="stack starts at 0xF0"):
+        asm(".org 0xF0\n")
+
+
+def test_org_no_puede_saltar_el_limite_de_256_bytes() -> None:
+    with pytest.raises(assembler.AssemblerError, match="maximum is 256"):
+        asm(".org 0xFF\n.db 0x00, 0x00\n")
+
+
+def test_db_admite_punto_y_coma_dentro_de_una_cadena() -> None:
+    assert asm('.db "a; b", 0\n') == [0x61, 0x3B, 0x20, 0x62, 0x00]
+
+
+def test_una_constante_no_puede_ser_base_indexada() -> None:
+    # `[B+3]` is register-indexed syntax; a constant named like a register must
+    # not silently select that register (the same rule as plain `[B]`).
+    with pytest.raises(assembler.AssemblerError, match="cannot be used as an indexed base"):
+        asm(".equ B, 0x30\nLD A, [B+3]\n")
+    with pytest.raises(assembler.AssemblerError, match="cannot be used as an indexed base"):
+        asm(".equ B, 0x30\nLDW A, [B+3]\n")
+
+
+def test_org_no_admite_direcciones_negativas() -> None:
+    with pytest.raises(assembler.AssemblerError, match="out of range 0..255"):
+        asm(".org -1\n")

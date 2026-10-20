@@ -3,7 +3,7 @@
 # The Ubuntu 24.04 toolchain is NOT used on purpose: nextpnr 0.6 places the
 # design at 11.35 MHz, below the 12 MHz target, and then exits with an error.
 # These wheels carry the same yosys/nextpnr the design is calibrated against
-# (823/1280 LCs at 14.07 MHz), which keeps the area/timing budget check
+# (845/1280 LCs at 14.91 MHz), which keeps the area/timing budget check
 # meaningful.  Versions are pinned for reproducibility; bump them deliberately
 # when a new release is known to still fit.
 #

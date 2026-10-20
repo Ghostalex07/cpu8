@@ -126,10 +126,15 @@ module irq_tb;
             errors = errors + 1;
         end
 
-        $display("  Outputs emitted: %0d (expected: %0d)", nout, nexp);
-        if (nout !== nexp) errors = errors + 1;
+        if (use_exp) begin
+            $display("  Outputs emitted: %0d (expected: %0d)", nout, nexp);
+            if (nout !== nexp) errors = errors + 1;
+        end else begin
+            $display("  Outputs emitted: %0d (no expected list, not compared)", nout);
+        end
 
-        if (errors == 0) $display("IRQ: ALL TESTS PASSED");
+        if (errors == 0 && use_exp) $display("IRQ: ALL TESTS PASSED");
+        else if (errors == 0)       $display("IRQ: NO EXPECTED LIST (nothing compared)");
         else             $display("IRQ: %0d FAILURES", errors);
 
         if (errors != 0) $fatal(1, "IRQ: there are failures, check above");

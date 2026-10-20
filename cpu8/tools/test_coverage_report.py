@@ -67,3 +67,10 @@ def test_main_reports_a_missing_file(tmp_path) -> None:
 def test_main_requires_one_argument(capsys) -> None:
     assert coverage_report.main([]) == 2
     assert "usage:" in capsys.readouterr().err
+
+
+def test_main_rejects_a_non_finite_minimum(tmp_path, capsys) -> None:
+    path = tmp_path / "coverage.info"
+    path.write_text(INFO)
+    assert coverage_report.main(["--min", "nan", str(path)]) == 2
+    assert "finite" in capsys.readouterr().err

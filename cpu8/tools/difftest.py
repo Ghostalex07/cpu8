@@ -134,7 +134,10 @@ def main() -> int:
 
     vvp = compilar_tb()
     dir_fallos = BUILD / "difftest-fallos"
+    if dir_fallos.exists():
+        shutil.rmtree(dir_fallos)
     fallos = 0
+    probados = 0
 
     print("=== programs/*.asm ===")
     for p in sorted(PROG_DIR.glob("*.asm")):
@@ -142,8 +145,10 @@ def main() -> int:
         try:
             b, _, _ = assembler.ensamblar(src)
         except assembler.AssemblerError as e:
-            print(f"  SKIP {p.name}: {e}")
+            print(f"  FAIL {p.name}: does not assemble: {e}")
+            fallos += 1
             continue
+        probados += 1
         if not probar(p.stem, src, b, vvp, args.max, dir_fallos):
             fallos += 1
 
@@ -152,7 +157,14 @@ def main() -> int:
         for i in range(args.count):
             rng = random.Random(args.seed * 1000003 + i)
             src = fuzz.generar_fuente(rng, args.instr)
-            b, _, _ = assembler.ensamblar(src)
+            try:
+                b, _, _ = assembler.ensamblar(src)
+            except assembler.AssemblerError as e:
+                print(f"  FAIL fuzz_{args.seed}_{i}: generated program does not "
+                      f"assemble: {e}")
+                fallos += 1
+                continue
+            probados += 1
             # About half of the programs are also run with irq active to cover
             # the interrupt path (previously only covered by irqtest).
             irq_at = None
@@ -164,6 +176,9 @@ def main() -> int:
 
     if fallos:
         print(f"\nDIFFERENTIAL: {fallos} FAILURES")
+        return 1
+    if probados == 0:
+        print("\nDIFFERENTIAL: no programs were tested")
         return 1
     print("\nDIFFERENTIAL: ALL OK")
     return 0

@@ -32,11 +32,13 @@ module cpu_trace_tb;
 
     reg [8*256-1:0] hexfile;
     integer n = 0;
+    integer k;
     localparam integer MAX_INSTR = 20000;   // safety cap
 
     initial begin
         if (!$value$plusargs("hex=%s", hexfile)) hexfile = "programs/countdown.hex";
         if (!$value$plusargs("in=%d", in_data)) in_data = 8'h00;
+        for (k = 0; k < 256; k = k + 1) dut.u_ram.mem[k] = 8'h00;
         $readmemh(hexfile, dut.u_ram.mem);
         $display("=== trace of %0s ===", hexfile);
         $display("    PC   IR   A    B    C    D    Z C N V  SP");

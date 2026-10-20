@@ -4,13 +4,13 @@
 
 CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unified memory for code and data). 8-bit address and data buses → **256 bytes** of addressable RAM.
 
-- **Instruction words**: variable (1 byte or 2 bytes)
+- **Instruction words**: variable (1, 2 or 3 bytes)
 - **Registers**: A, B, C, D (GPR), PC, SP, IR, operand, flags (Z, C, N, V), register I (IRQ)
 - **ALU**: combinational, with ADD/SUB/AND/OR/XOR/CMP/SHL/SHR operations, the immediate variants ADDI/SUBI/CMPI and MUL/DIV
 - **Control**: synchronous FSM with 7 states (`FETCH`, `OPR`, `OPR2`, `EXEC`, `EXEC2`, `IRQ`, `HLT`)
 - **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
 - **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle; `RETI` restores the saved arithmetic flags (flag `I` stays cleared)
-- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory and ~65 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the full 256-byte memory and ~66 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
 
 ## Datapath
 

@@ -7,7 +7,7 @@
 
 - **von Neumann architecture**: code and data share a single 256-byte memory.
 - **Data bus**: 8 bits. **Address bus**: 8 bits → 256 addresses (0x00–0xFF).
-- **Instruction word**: variable (1 or 2 bytes).
+- **Instruction word**: variable (1, 2 or 3 bytes).
 
 ### General-purpose registers (8 bits each)
 
@@ -411,6 +411,7 @@ In `programs/` there are several example programs written by hand with the ISA:
 | `irq.asm`       | Interrupt: `EI`, counter 0..9 and a handler that counts to 1 and returns with `RETI` (Phase 7.5, Phase 13) | `1 0 2 3 4 5 6 7 8 9 10`                 |
 | `extensions3.asm` | Prefix `0xFA`: `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR` and the 16-bit `LDW`/`STW` (Phase 12) | `FB 04 10 11 FF 01 1E 1F 02 05 00 80 34 12 77 88 99 99 C1 C2` (hex) |
 | `extensions4.asm` | Prefix `0xFA`: `TEST`, `PUSHF`, `POPF` and the 16-bit pair operations `ADCW`/`SUBW` (Phase 12) | `0F 01 02 03 04 07 03 05 00 02 06 05 02 07 00 FF 08 09 0A FF FF 00 02 0B 0C` (hex) |
+| `logic.asm`     | bitwise OR/XOR, shifts SHL/SHR and ROL/ROR through the carry (Phase 12d) | `FF 00 81 AF 5F 02 80 40 00 00 01 00 80 81 40` (hex) |
 | `reserved.asm`  | Reserved encodings (`0xE2`, `0xFA 0xF0`) and `DI` are backward-compatible no-ops (Phase 13) | `42 55` (hex) |
 
 **How they are verified.** Each program has a sibling file `programs/<name>.ref`
@@ -463,8 +464,8 @@ register (bits `[1:0]`).
 
 | `oo` | Mnemonic | Effect                                        |
 |------|-----------|-----------------------------------------------|
-| `00` | INC rd    | `rd ← rd + 1`; updates `Z`,`N` (not `C`).     |
-| `01` | DEC rd    | `rd ← rd - 1`; updates `Z`,`N` (not `C`).     |
+| `00` | INC rd    | `rd ← rd + 1`; updates `Z`,`N`,`V` (not `C`). |
+| `01` | DEC rd    | `rd ← rd - 1`; updates `Z`,`N`,`V` (not `C`). |
 | `10` | PUSH rd   | `RAM[SP] ← rd`; then `SP ← SP - 1` (§10.2).   |
 | `11` | POP rd    | `SP ← SP + 1`; then `rd ← RAM[SP]` (§10.2).   |
 
@@ -479,7 +480,8 @@ Encoding: `INC A..D = 0x00..0x03`, `DEC A..D = 0x04..0x07`, `PUSH A..D = 0x08..0
   - `PUSH rd`: `RAM[SP] ← rd`; `SP ← SP - 1`.
   - `POP rd` : `SP ← SP + 1`; `rd ← RAM[SP]`.
 - **Collision**: the program and the data must be kept below `0xF0`; the stack grows
-  down from there towards `0x00`.
+  down from there towards `0x00`. The assembler enforces it with a 16-byte margin:
+  an image that reaches `0xE0` is rejected at assembly time.
 
 ### 10.3 Subroutines: CALL / RET
 
@@ -667,7 +669,7 @@ high byte in a second cycle (`S_EXEC2`), chaining the carry — or, for `SUBW`,
 its inversion (the borrow). `Z` is set only when **both** result bytes are
 zero, so a 16-bit zero is detected correctly. Each instruction takes 4 cycles.
 
-Hardware (see `docs/ARCHITECTURE.md`): the FSM gains an `S_OPR2` state that
+Hardware (see [`docs/ARCHITECTURE.md`](../../docs/ARCHITECTURE.md)): the FSM gains an `S_OPR2` state that
 fetches the 3rd byte, `cpu.v` keeps byte 2 of the prefix in an `xop` register,
 the register file has a **second write port** (so `SWAP` writes both registers in
 the same cycle) and the RAM address can be taken from the ALU result (the 9-bit
@@ -679,3 +681,25 @@ E.g.: `NEG A`=`FA 00`, `ADC A,B`=`FA 21`, `SWAP A,C`=`FA 42`, `ROL D`=`FA 5C`,
 `PUSHF`=`FA A0`, `POPF`=`FA B0`, `ADCW A,C`=`FA C2`, `SUBW A,C`=`FA D2`,
 `RETI`=`FA E0`.
 Example programs: `programs/extensions3.asm` and `programs/extensions4.asm`.
+
+### 10.11 Aliases and edge cases
+
+The RTL and the ISS agree on these behaviours. They are **not** part of the
+recommended encoding and the assembler never emits them, but a hand-written
+`.hex` can reach them:
+
+| Encoding | Behaviour |
+|---|---|
+| `0xDC`–`0xDF` (Jcc family `11`) | Alias of family `10`: `JVS`/`JVC`/`JMI`/`JPL`. |
+| `0xB?` with `rs[1]=1` (e.g. `0xB2`) | `rs[1]` is ignored: the shift is chosen by `rs[0]` (`SHL` for 0, `SHR` for 1). |
+| `0xC?` with `rd != 00` (e.g. `0xC4`) | `rd` is ignored: `rs=00` is `JMP`, `rs=01` is `CALL`, any other `rs` jumps like `JMP`. |
+| `0xE?` with `rs=2` or `3` | Reserved: 1-byte no-op. |
+| `0xFA` with an unknown `xop` or unused operand bits | Reserved: 2-byte no-op (`RETI`/`PUSHF`/`POPF` have no operands). |
+
+**`HLT` and interrupts.** `HLT` stops the CPU until reset; a pending interrupt
+is not taken. **`in_port`.** During `OUT n,rd` the CPU also drives `n` on the
+`in_port` pins (the port bus is shared by `IN` and `OUT n,rd`), although no
+data is read.
+**Stack pointer wrap.** `SP` is 8 bits: `PUSH` at `SP=0x00` writes `RAM[0x00]`
+and leaves `SP=0xFF`, while `POP` at `SP=0xFF` reads `RAM[0x00]`. The assembler
+guard (`§10.2`) only reserves room for the *image*, not for a runaway stack.

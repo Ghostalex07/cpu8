@@ -183,7 +183,15 @@ def main(argv: list[str]) -> int:
         return actualizar()
     fuzz_n = 200
     if "--fuzz" in args:
-        fuzz_n = int(args[args.index("--fuzz") + 1])
+        k = args.index("--fuzz")
+        if k + 1 >= len(args):
+            print("regress: --fuzz expects a number", file=sys.stderr)
+            return 2
+        try:
+            fuzz_n = int(args[k + 1])
+        except ValueError:
+            print(f"regress: invalid --fuzz value '{args[k + 1]}'", file=sys.stderr)
+            return 2
     print("=== cpu8 regression ===")
     fallos = _comprobar_bytes() + _comprobar_trazas()
     if fuzz_n:

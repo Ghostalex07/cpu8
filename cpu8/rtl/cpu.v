@@ -168,7 +168,8 @@ module cpu #(
                      : (sel_ram_pc ? pc_q : rf_rdata_rd);
 
     ram u_ram (
-        .clk(clk), .we(ram_we), .addr(ram_addr), .wdata(ram_wdata), .rdata(ram_rdata)
+        .clk(clk), .rst(rst), .we(ram_we), .addr(ram_addr), .wdata(ram_wdata),
+        .rdata(ram_rdata)
     );
 
     // ------------------------------------------------------------------
@@ -217,11 +218,7 @@ module cpu #(
             flags_saved <= 4'b0000;
             c16      <= 1'b0;
             z16      <= 1'b0;
-`ifdef FPGA_RAM64
-            SP       <= 8'h3F;   // stack in reduced RAM (64 bytes)
-`else
             SP       <= 8'hF0;   // stack in full RAM (256 bytes)
-`endif
             out_data <= 8'h00;
             out_valid<= 1'b0;
             out_port <= 2'b00;

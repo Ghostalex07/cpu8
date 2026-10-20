@@ -72,7 +72,23 @@ def _to_int(tok: str, labels: dict[str, int]) -> int:
         return int(s[2:], 16)
     if s.startswith("$"):
         s = "0x" + s[1:]
-    return int(s, 0)
+    return _dec(s)
+
+
+def _dec(tok: str) -> int:
+    """Parses a count: decimal, ``0x``/``0b``, tolerating a leading zero ("08")."""
+    try:
+        return int(tok, 0)
+    except ValueError:
+        return int(tok, 10)
+
+
+def _addr(tok: str, labels: dict[str, int]) -> int:
+    """Parses an address and checks that it fits the 256-byte memory."""
+    value = _to_int(tok, labels)
+    if not 0 <= value <= 0xFF:
+        raise ValueError(f"address 0x{value:X} is outside the 256-byte memory")
+    return value
 
 
 class Debugger:
@@ -107,13 +123,14 @@ class Debugger:
         self.irqs = 0
         self.rows: list[tuple] = []
         self.hit_break: int | None = None
+        self.last_error = False
         self.watches = {t: self._read(t) for t in self.watches}
 
     # ---- low-level access -------------------------------------------------
     def _read(self, target: str) -> int:
         t = target.strip()
         if t.startswith("@"):
-            return self.iss.mem[_to_int(t[1:], self.labels) & 0xFF]
+            return self.iss.mem[_addr(t[1:], self.labels)]
         if t in _FLAG_ATTRS:
             return getattr(self.iss, _FLAG_ATTRS[t])
         if t in _REG_ATTRS:
@@ -148,6 +165,7 @@ class Debugger:
             self.iss.take_irq()
             self.irqs += 1
             self.cycles += 1
+            self._check_watches()
             return
         n = self._cycles()
         self.rows.append(self.iss.step())
@@ -287,9 +305,11 @@ class Debugger:
             return True
         parts = line.split()
         cmd, args = parts[0].lower(), parts[1:]
+        self.last_error = False
         try:
             return self._dispatch(cmd, args)
         except (ValueError, IndexError) as e:
+            self.last_error = True
             self.out(f"error: {e}")
             return True
 
@@ -308,16 +328,16 @@ class Debugger:
             if not args:
                 self.out("usage: until <address|label>")
             else:
-                self.cmd_until(_to_int(args[0], self.labels) & 0xFF)
+                self.cmd_until(_addr(args[0], self.labels))
         elif cmd in ("b", "break"):
             if not args:
                 self.out("usage: break <address|label>")
             else:
-                a = _to_int(args[0], self.labels) & 0xFF
+                a = _addr(args[0], self.labels)
                 self.breakpoints.add(a)
                 self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("d", "delete"):
-            a = _to_int(args[0], self.labels) & 0xFF
+            a = _addr(args[0], self.labels)
             self.breakpoints.discard(a)
             self.out(f"breakpoint removed at 0x{a:02X}{self._sym(a)}")
         elif cmd in ("clear",):
@@ -345,14 +365,20 @@ class Debugger:
             if not args:
                 self.out("usage: mem <address> [count]")
             else:
-                cnt = int(args[1], 0) if len(args) > 1 else 64
-                self.cmd_mem(_to_int(args[0], self.labels) & 0xFF, cnt)
+                cnt = _dec(args[1]) if len(args) > 1 else 64
+                if cnt <= 0:
+                    raise ValueError("count must be positive")
+                self.cmd_mem(_addr(args[0], self.labels), cnt)
         elif cmd in ("l", "list", "disasm"):
             addr = _to_int(args[0], self.labels) if args else None
-            cnt = int(args[1], 0) if len(args) > 1 else 8
+            cnt = _dec(args[1]) if len(args) > 1 else 8
+            if cnt <= 0:
+                raise ValueError("count must be positive")
             self.cmd_disasm(addr, cnt)
         elif cmd in ("trace",):
-            n = int(args[0], 0) if args else 20
+            n = _dec(args[0]) if args else 20
+            if n <= 0:
+                raise ValueError("count must be positive")
             for row in self.rows[-n:]:
                 self.out(_format_row(row, self.inv_labels))
         elif cmd in ("out", "outs"):
@@ -374,6 +400,7 @@ class Debugger:
             for name, a in sorted(self.labels.items(), key=lambda kv: kv[1]):
                 self.out(f"  {name:<12} = 0x{a:02X}")
         else:
+            self.last_error = True
             self.out(f"unknown command '{cmd}'; type 'help'")
         return True
 
@@ -472,6 +499,9 @@ def main(argv: list[str] | None = None) -> int:
     except assembler.AssemblerError as e:
         print(f"Assembly error in {path}: {e}", file=sys.stderr)
         return 1
+    except (ValueError, OSError) as e:
+        print(f"Error: cannot read '{path}': {e}", file=sys.stderr)
+        return 1
 
     dbg = Debugger(
         mem, labels, irq_vector=args.irq_vector, irq_at=args.irq, max_steps=args.max_steps
@@ -489,10 +519,12 @@ def main(argv: list[str] | None = None) -> int:
     if args.script is not None:
         commands.extend(args.script.read_text().splitlines())
     if commands:
+        failed = False
         for cmd in commands:
             if not dbg.handle(cmd):
                 break
-        return 0
+            failed = failed or dbg.last_error
+        return 1 if failed else 0
 
     return _repl(dbg)
 
