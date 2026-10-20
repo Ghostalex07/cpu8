@@ -587,7 +587,11 @@ module control (
               // 0xF0 HLT: the FSM stops via is_hlt
             end
 
+            // Every 4-bit op group is decoded above; this default is
+            // defensive and unreachable.
+            /* verilator coverage_off */
             default: ;
+            /* verilator coverage_on */
           endcase
         // ADCW/SUBW need a 2nd EXEC cycle for the high byte of the
         // pair; everything else finishes here.
@@ -616,7 +620,10 @@ module control (
         nstate = S_HLT;
       end
 
+      // state is 3 bits but only 0..6 exist; state 7 is unreachable.
+      /* verilator coverage_off */
       default: nstate = S_FETCH;
+      /* verilator coverage_on */
     endcase
   end
 
