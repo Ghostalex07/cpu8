@@ -1,0 +1,14 @@
+[options]
+mode bmc
+depth 1
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/control.v control_fv.sv
+prep -top control_fv
+
+[files]
+rtl/control.v ../rtl/control.v
+control_fv.sv control_fv.sv

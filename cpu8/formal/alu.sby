@@ -1,0 +1,14 @@
+[options]
+mode bmc
+depth 2
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/alu.v alu_fv.sv
+prep -top alu_fv
+
+[files]
+rtl/alu.v ../rtl/alu.v
+alu_fv.sv alu_fv.sv

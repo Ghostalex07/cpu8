@@ -1,0 +1,11 @@
+=== trace of programs/reserved.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   10   42   00   00   00   0 0 0 0  f0      
+  02   e0   42   00   00   00   0 0 0 0  f0   OUT
+  03   e2   42   00   00   00   0 0 0 0  f0      
+  04   fa   42   00   00   00   0 0 0 0  f0      
+  06   f3   42   00   00   00   0 0 0 0  f0      
+  07   14   42   55   00   00   0 0 0 0  f0      
+  09   e4   42   55   00   00   0 0 0 0  f0   OUT
+  0a   f0   42   55   00   00   0 0 0 0  f0      
+(HLT after 8 instructions)

@@ -155,6 +155,7 @@ XOP_PUSHF: Final = 0xA  # PUSHF              (no operands)
 XOP_POPF: Final = 0xB  # POPF               (no operands)
 XOP_ADCW: Final = 0xC  # ADCW pr, ps        (16-bit pair, 2 EXEC cycles)
 XOP_SUBW: Final = 0xD  # SUBW pr, ps        (16-bit pair, 2 EXEC cycles)
+XOP_RETI: Final = 0xE  # RETI               (return from interrupt)
 
 # Instructions that take a second byte (immediate or address).
 DOS_BYTES: Final[set[str]] = {
@@ -181,6 +182,7 @@ DOS_BYTES: Final[set[str]] = {
     "POPF",
     "ADCW",
     "SUBW",
+    "RETI",
 } | set(CONDICIONES)
 
 # Prefixed instructions that also take a third byte (indexed displacement).
@@ -228,6 +230,7 @@ MNEMONICOS: Final[set[str]] = (
         "POPF",
         "ADCW",
         "SUBW",
+        "RETI",
     }
     | set(OPCODE_ALU)
     | set(CONDICIONES)
@@ -236,6 +239,13 @@ MNEMONICOS: Final[set[str]] = (
 # --- Assembler directives ----------------------------------------------------
 # The mnemonic is normalized to uppercase when the line is parsed.
 DIRECTIVAS: Final[set[str]] = {".ORG", ".DB", ".DW", ".EQU"}
+
+# --- Memory layout check -----------------------------------------------------
+# SP starts at 0xF0 and every PUSH stores at SP and then decrements it, so the
+# stack grows down into the program area.  Leave at least MARGEN_PILA bytes
+# free below 0xF0, otherwise the first calls/pushes would overwrite the code.
+TOPE_PILA: Final = 0xF0
+MARGEN_PILA: Final = 16
 
 # --- Precompiled regular expressions -----------------------------------------
 _RE_ETIQUETA: Final = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*:(.*)$")
@@ -514,10 +524,10 @@ def codificar(
         rs = indice_registro(operandos[1], num_linea)
         return [OP_EXT, (XOP_TEST << 4) | (rd << 2) | rs]
 
-    if mnem in ("PUSHF", "POPF"):
-        # Extended flag stack ops (2 bytes, without operands).
+    if mnem in ("PUSHF", "POPF", "RETI"):
+        # Extended flag/stack ops (2 bytes, without operands).
         exigir_operandos(num_linea, mnem, operandos, 0)
-        xop = XOP_PUSHF if mnem == "PUSHF" else XOP_POPF
+        xop = {"PUSHF": XOP_PUSHF, "POPF": XOP_POPF, "RETI": XOP_RETI}[mnem]
         return [OP_EXT, (xop << 4)]
 
     if mnem in ("ADCW", "SUBW"):
@@ -748,6 +758,7 @@ def ensamblar(
     plan: list[tuple] = []
     pc = 0
     linea_overflow: int | None = None
+    linea_pila: int | None = None
 
     for i, etiqueta, mnem, ops, texto in crudas:
         if etiqueta is not None:
@@ -781,6 +792,8 @@ def ensamblar(
             pc += sum(len(v) if t == "str" else 1 for t, v in campos)
             if pc > 256 and linea_overflow is None:
                 linea_overflow = i
+            if pc > TOPE_PILA - MARGEN_PILA and linea_pila is None:
+                linea_pila = i
             continue
 
         if mnem == ".DW":
@@ -795,6 +808,8 @@ def ensamblar(
             pc += 2 * len(campos_w)
             if pc > 256 and linea_overflow is None:
                 linea_overflow = i
+            if pc > TOPE_PILA - MARGEN_PILA and linea_pila is None:
+                linea_pila = i
             continue
 
         if mnem not in MNEMONICOS:
@@ -804,11 +819,22 @@ def ensamblar(
         pc += tamano_instruccion(mnem, ops)
         if pc > 256 and linea_overflow is None:
             linea_overflow = i
+        if pc > TOPE_PILA - MARGEN_PILA and linea_pila is None:
+            linea_pila = i
 
     if linea_overflow is not None:
         # The line where the program exceeds 256 bytes is reported, not the
         # total number of lines of the file (which includes comments/blank ones).
         raise AssemblerError(linea_overflow, f"program is {pc} bytes; the maximum is 256")
+
+    if linea_pila is not None:
+        limite = TOPE_PILA - MARGEN_PILA
+        raise AssemblerError(
+            linea_pila,
+            f"program reaches 0x{pc:02X}; the stack starts at 0xF0 and grows "
+            f"down, so the image must end below 0x{limite:02X} "
+            f"(at least {MARGEN_PILA} bytes of stack)",
+        )
 
     # ---- Pass 2: encode, resolve labels and emit ---------------------------
     def resolver(tok: str) -> int:

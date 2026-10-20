@@ -921,6 +921,20 @@ INSTRUCCIONES: Final[tuple[Instruccion, ...]] = (
         muestra="SUBW A, C",
         desensamblado="SUBW A, C",
     ),
+    Instruccion(
+        mnemonico="RETI",
+        forma="—",
+        pagina=0xF,
+        bajo=0b1010,
+        byte2=0xE0,
+        regla="0xFA ; byte2 = (0xE<<4)",
+        banderas="Z C N V",
+        descripcion="Return from interrupt: pop the return PC (like RET) and "
+        "restore the arithmetic flags (C, Z, N, V) saved when the interrupt "
+        "was taken.  Flag I stays cleared (use EI to re-enable interrupts).",
+        muestra="RETI",
+        desensamblado="RETI",
+    ),
 )
 
 

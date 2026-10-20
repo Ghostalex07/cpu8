@@ -201,6 +201,7 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 - **SWAP / XCHG rd,rs** (§10.10): do **not** modify flags.
 - **LDW / STW rd,[rs+off]** (§10.10): only update `C` (bit 8 of the computed 9-bit address).
 - **LDI / MOV / LD / ST / OUT / IN / NOP / JMP / Jcc / HLT / PUSH / POP / PUSHF / CALL / RET / EI / DI**: do **not** modify flags.
+- **RETI** (§10.6): restores `C,Z,N,V` saved when the interrupt was taken; `I` is left at `0`.
 
 ### The Z and N flags
 
@@ -332,14 +333,14 @@ make sim  PROG=programs/demo                          # assemble and simulate
   `C` (see §10.10).
 - Immediates with the ALU (Phase 8): `ADDI`, `SUBI`, `CMPI` (e.g. `ADDI A, 5`).
 - Extended ALU ops (Phase 12, §10.10): `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`,
-  `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`.
+  `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`, and `RETI` (§10.6).
 
 **Accepted mnemonics**: `NOP`, `LDI`, `ADDI`, `SUBI`, `CMPI`, `MOV`, `LD`, `ST`,
 `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV`, `IN`, `OUT`,
 `INC`, `DEC`, `PUSH`, `POP`, `JMP`, `CALL`, `RET`, `JZ`, `JNZ`, `JC`, `JNC`, `JHS`,
 `JLO`, `JLT`, `JGE`, `JLE`, `JGT`, `JVS`, `JVC`, `JMI`, `JPL`, `EI`, `DI`, `HLT`,
 `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `XCHG`, `ROL`, `ROR`, `LDW`, `STW`,
-`TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`.
+`TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`, `RETI`.
 (`NOP` is encoded as `MOV A,A` = `0x20`; `JHS`/`JLO` are aliases of `JC`/`JNC`, see §4;
 `XCHG` is an alias of `SWAP`, see §10.10.)
 
@@ -374,7 +375,7 @@ accepted; commas inside the quotes do not separate fields.
    the size of each instruction: **2 bytes** for `LDI`, `ADDI`, `SUBI`, `CMPI`,
    `LD`/`ST` (direct, indirect and indexed), `JMP`, `CALL`, `MUL`, `DIV`, `Jcc`
    and the 2-byte prefixed instructions (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`,
-   `XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`); **3 bytes** for `LDW`/`STW`;
+   `XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`, `RETI`); **3 bytes** for `LDW`/`STW`;
    **1 byte** for the rest (`OUT`/`IN` are 1 byte in their register form and 2 in
    the ported `OUT n, rd`/`IN n, rd`); `.org` sets the PC, `.db` contributes one byte per
    item and `.dw` two bytes per item.
@@ -407,9 +408,10 @@ In `programs/` there are several example programs written by hand with the ISA:
 | `factorial.asm` | Iterative factorial 5! = 120 with the hardware `MUL`            | `78` (hex) |
 | `primes.asm`    | Primes below 32 by trial division with `DIV`/`MUL`             | `02 03 05 07 0B 0D 11 13 17 1D 1F` (hex) |
 | `sort.asm`      | Sorts an array with bubble sort; the data is declared with the `.db` directive | `01 02 03 05 08 09` (hex) |
-| `irq.asm`       | Interrupt: `EI`, counter 0..9 and a handler that counts to 1 (Phase 7.5) | `0 1 2 3 4 5 6 7 8 9 1`                 |
+| `irq.asm`       | Interrupt: `EI`, counter 0..9 and a handler that counts to 1 and returns with `RETI` (Phase 7.5, Phase 13) | `1 0 2 3 4 5 6 7 8 9 10`                 |
 | `extensions3.asm` | Prefix `0xFA`: `NEG`, `NOT`, `ADC`, `SBC`, `SWAP`, `ROL`, `ROR` and the 16-bit `LDW`/`STW` (Phase 12) | `FB 04 10 11 FF 01 1E 1F 02 05 00 80 34 12 77 88 99 99 C1 C2` (hex) |
 | `extensions4.asm` | Prefix `0xFA`: `TEST`, `PUSHF`, `POPF` and the 16-bit pair operations `ADCW`/`SUBW` (Phase 12) | `0F 01 02 03 04 07 03 05 00 02 06 05 02 07 00 FF 08 09 0A FF FF 00 02 0B 0C` (hex) |
+| `reserved.asm`  | Reserved encodings (`0xE2`, `0xFA 0xF0`) and `DI` are backward-compatible no-ops (Phase 13) | `42 55` (hex) |
 
 **How they are verified.** Each program has a sibling file `programs/<name>.ref`
 with the list of expected outputs in hexadecimal (one value per line, no
@@ -429,7 +431,8 @@ compares automatically if the `.ref` exists).
 `irq.asm` is verified separately with `make irqtest`: `tb/irq_tb.v` instantiates
 the CPU with `IRQ_VECTOR = 0x10` and drives the `irq` signal after reset (the
 normal `cpu_tb` leaves it at `0`, so `irq.asm` is excluded from the `progtests`
-loop).
+loop). The handler ends with `RETI`, which restores the arithmetic flags (the
+demo relies on `C` surviving the interrupt).
 
 **Differential verification.** Besides the `.ref` files (which check that the
 output *does not change*), `tools/iss.py` is a reference model of the ISA in
@@ -519,10 +522,15 @@ the address register with `INC`). Byte 2 packs the `rd` and `rs` indices.
   1. performs a `PUSH` of the return address (the current `PC`),
   2. sets `I ← 0` (prevents re-entry),
   3. jumps to the **`IRQ_VECTOR`** (a `cpu.v` parameter, default `0x08`).
-- The handler ends with `RET`, which restores the `PC`.
-- **Limitation**: when handling the interrupt only the `PC` is saved; the flags are
-  not restored. The handler must save/restore with `PUSH`/`POP` the registers it
-  uses, and the vector address must be reserved in the program.
+- The handler ends with `RETI`, which restores the `PC` and the arithmetic flags
+  saved on entry.
+- **Flags**: when the interrupt is taken the CPU saves `C`, `Z`, `N` and `V`;
+  `RETI` restores them, so the interrupted code continues with the same
+  arithmetic state. `I` is **not** restored: it stays `0` after `RETI` (the
+  handler must `EI` again if it wants further interrupts), which avoids
+  immediately re-entering the handler when `IRQ` is still asserted.
+- The handler must still save/restore with `PUSH`/`POP` the registers it uses,
+  and the vector address must be reserved in the program.
 
 **Implementation (Phase 7.5).** Handling takes one cycle in its own FSM state
 (`S_IRQ`): on entering from `S_FETCH` (without fetching an instruction) the `PC` is
@@ -634,7 +642,8 @@ The sub-operations (`xop`) are:
 | `0xB` | `POPF` | 2 | — | `SP ← SP + 1`; the popped byte restores `C,Z,N,V,I` (bits 4..0). |
 | `0xC` | `ADCW pr,ps` | 2 | `pr`, `ps` | 16-bit pair sum: `pr:pr|1 ← pr:pr|1 + ps:ps|1 + C` (`Z C N V`); 4 cycles. |
 | `0xD` | `SUBW pr,ps` | 2 | `pr`, `ps` | 16-bit pair difference: `pr pair − ps pair − C` (`Z C N V`); 4 cycles. |
-| `0xE`..`0xF` | — | 2 | — | **reserved** (2-byte no-op). |
+| `0xE` | `RETI` | 2 | — | return from interrupt: `PC ← RAM[SP+1]`, `SP ← SP + 1` (like `RET`) and restore `C,Z,N,V` from the interrupt. `I` stays `0`. |
+| `0xF` | — | 2 | — | **reserved** (2-byte no-op). |
 
 Unlike the base indexed `LD/ST rd,[rs+off]`, the base register of `LDW`/`STW` may
 be **any** register (`A`–`D`) and the sum is computed with **9 bits**: bit 8 is
@@ -667,5 +676,6 @@ the same cycle) and the RAM address can be taken from the ALU result (the 9-bit
 
 E.g.: `NEG A`=`FA 00`, `ADC A,B`=`FA 21`, `SWAP A,C`=`FA 42`, `ROL D`=`FA 5C`,
 `LDW A,[B+3]`=`FA 71 03`, `STW C,[D+4]`=`FA 8B 04`, `TEST A,B`=`FA 91`,
-`PUSHF`=`FA A0`, `POPF`=`FA B0`, `ADCW A,C`=`FA C2`, `SUBW A,C`=`FA D2`.
+`PUSHF`=`FA A0`, `POPF`=`FA B0`, `ADCW A,C`=`FA C2`, `SUBW A,C`=`FA D2`,
+`RETI`=`FA E0`.
 Example programs: `programs/extensions3.asm` and `programs/extensions4.asm`.

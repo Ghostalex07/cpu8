@@ -426,6 +426,21 @@ def test_org_retrocede_es_error() -> None:
         asm("LDI A, 1\n.org 0x00\nHLT")
 
 
+def test_la_imagen_no_puede_invadir_la_pila() -> None:
+    # SP starts at 0xF0 and grows down: leave room for at least 16 stack bytes.
+    with pytest.raises(assembler.AssemblerError, match="stack starts at 0xF0"):
+        asm(".org 0xE0\n.db 0xAA")
+
+
+def test_la_imagen_puede_llegar_al_limite_de_la_pila() -> None:
+    assert asm(".org 0xDF\n.db 0xAA") == [0x00] * 0xDF + [0xAA]
+
+
+def test_una_instruccion_que_invade_la_pila_es_error() -> None:
+    with pytest.raises(assembler.AssemblerError, match="stack"):
+        asm(".org 0xDF\nLDI A, 1")
+
+
 def test_db_numeros_y_bases() -> None:
     assert asm(".db 1, 2, 0xFF, 0b1010, $20, -1\nHLT") == (
         [0x01, 0x02, 0xFF, 0x0A, 0x20, 0xFF, 0xF0]
@@ -511,8 +526,11 @@ def test_fuente_vacio() -> None:
     assert asm("\n; only comments\n   \n") == []
 
 
-def test_256_bytes_es_el_maximo() -> None:
-    assert len(asm("\n".join("NOP" for _ in range(256)))) == 256
+def test_una_imagen_de_256_bytes_invade_la_pila() -> None:
+    # 256 bytes reach 0xFF, inside the stack area: the stack check fires long
+    # before the architectural 256-byte limit.
+    with pytest.raises(assembler.AssemblerError, match="stack"):
+        asm("\n".join("NOP" for _ in range(256)))
 
 
 def test_extraer_linea_del_error_de_desbordamiento() -> None:
@@ -530,6 +548,11 @@ def test_linea_de_desbordamiento_ignora_comentarios_previos() -> None:
     with pytest.raises(assembler.AssemblerError) as exc:
         asm(src)
     assert "line 297" in str(exc.value)
+
+
+def test_reti_sin_operandos() -> None:
+    # RETI is a prefixed instruction without operands: 0xFA 0xE0.
+    assert asm("RETI") == [0xFA, 0xE0]
 
 
 # ---------------------------------------------------------------------------

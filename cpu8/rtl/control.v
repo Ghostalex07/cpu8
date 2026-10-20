@@ -92,6 +92,8 @@ module control (
     output reg        pc_from_vec, // PC <= IRQ_VECTOR (interrupt handling)
     output reg        flag_i_set,  // EI: flag I <= 1
     output reg        flag_i_clear,// DI or interrupt: flag I <= 0
+    output reg        flag_save,   // S_IRQ: save C,Z,N,V for RETI
+    output reg        flag_restore,// RETI: restore the flags saved on IRQ entry
     output reg        sel_in,      // the destination register takes in_data (IN)
     output reg        io_op,       // ported form: the port goes in operand[1:0]
 
@@ -229,6 +231,8 @@ module control (
         pc_from_vec = 1'b0;
         flag_i_set  = 1'b0;
         flag_i_clear= 1'b0;
+        flag_save   = 1'b0;
+        flag_restore= 1'b0;
         sel_in      = 1'b0;
         io_op       = 1'b0;
         ext         = 1'b0;
@@ -267,6 +271,7 @@ module control (
                 pc_load      = 1'b1;
                 pc_from_vec  = 1'b1;   // PC <= IRQ_VECTOR
                 flag_i_clear = 1'b1;   // prevents nested interrupts
+                flag_save    = 1'b1;   // RETI will restore C,Z,N,V,I
                 nstate       = S_FETCH;
             end
 
@@ -346,6 +351,10 @@ module control (
                         // SUBW pr,ps : pair pr <- pair pr - pair ps - C
                         4'hD: begin alu_op=ALU_ADC_SBC; alu_sh=1'b1;
                                     rf_we=1'b1; pair16_ld=1'b1; end
+                        // RETI : return from interrupt (RET + restore flags)
+                        4'hE: begin sp_as_addr=1'b1; sp_inc=1'b1;
+                                    pc_load=1'b1; pc_from_mem=1'b1;
+                                    flag_restore=1'b1; end
                         default: ;   // reserved prefix subops: 2-byte no-op
                     endcase
                 end

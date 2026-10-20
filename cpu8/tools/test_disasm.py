@@ -28,9 +28,14 @@ def d(bs: list[int]) -> str:
     return texto
 
 
+def test_reti() -> None:
+    assert d([0xFA, 0xE0]) == "RETI"
+
+
 # ---------------------------------------------------------------------------
 #  Decoding by groups
 # ---------------------------------------------------------------------------
+
 
 def test_grupo0_inc_dec_push_pop() -> None:
     assert d([0x00]) == "INC A"
@@ -101,8 +106,7 @@ def test_grupo_f() -> None:
 
 def test_multibyte_longitudes() -> None:
     # 1-byte instructions consume 1; 2-byte ones, 2.
-    for bs, ln in [([0xE0], 1), ([0xF8, 0x07], 2), ([0xC0, 0x04], 2),
-                   ([0x20], 1), ([0xF0], 1)]:
+    for bs, ln in [([0xE0], 1), ([0xF8, 0x07], 2), ([0xC0, 0x04], 2), ([0x20], 1), ([0xF0], 1)]:
         assert disasm.decodificar(bs, 0)[1] == ln
 
 
@@ -119,19 +123,21 @@ def test_round_trip_programas(asm_path: Path) -> None:
     fuente = "\n".join(disasm.desensamblar_crudo(original)) + "\n"
     reensamblado = assembler.ensamblar(fuente)[0]
     assert reensamblado == original, (
-        f"{asm_path.name}: the reassembly differs from the original\n{fuente}")
+        f"{asm_path.name}: the reassembly differs from the original\n{fuente}"
+    )
 
 
 # ---------------------------------------------------------------------------
 #  Fuzz: valid random programs -> asm -> hex -> disasm -> asm -> hex
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.parametrize("semilla", range(40))
 def test_fuzz_round_trip(semilla: int) -> None:
     import random
+
     rng = random.Random(semilla)
     fuente = fuzz.generar_fuente(rng, rng.randrange(1, 40))
     original = assembler.ensamblar(fuente)[0]
-    reensamblado = assembler.ensamblar(
-        "\n".join(disasm.desensamblar_crudo(original)) + "\n")[0]
+    reensamblado = assembler.ensamblar("\n".join(disasm.desensamblar_crudo(original)) + "\n")[0]
     assert reensamblado == original, f"seed {semilla}:\n{fuente}"

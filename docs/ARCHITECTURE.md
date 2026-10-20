@@ -9,8 +9,8 @@ CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unifie
 - **ALU**: combinational, with ADD/SUB/AND/OR/XOR/CMP/SHL/SHR operations, the immediate variants ADDI/SUBI/CMPI and MUL/DIV
 - **Control**: synchronous FSM with 7 states (`FETCH`, `OPR`, `OPR2`, `EXEC`, `EXEC2`, `IRQ`, `HLT`)
 - **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
-- **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle
-- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory and ~64 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
+- **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle; `RETI` restores the saved arithmetic flags (flag `I` stays cleared)
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the memory and ~65 % of the HX1K logic cells, closing timing at 12 MHz with the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
 
 ## Datapath
 
@@ -118,7 +118,11 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 
 - **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v` (includes exhaustive sweeps in the ALU)
 - **Programs**: each `programs/*.asm` is assembled, simulated with `cpu_tb.v` and its `OUT` is compared with `programs/*.ref`
-- **IRQ**: `irq_tb.v` verifies correct handling
+- **IRQ**: `irq_tb.v` verifies correct handling and `RETI` (which restores the
+  `C,Z,N,V` flags saved when the interrupt was taken)
+- **Formal**: `make formal` runs SymbiYosys (`formal/*.sby`): the ALU is proven
+  equivalent to a reference model for all operations and operands, and the FSM is
+  proven to stay within its 7 documented states
 - **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`; with `--coverage` (`make coverage`) a separate instrumented model is built and the demo runs are merged into an annotated report
 - **Directed**: `cpu_directed_tb.v` covers corner cases (CALL/RET, stack, ported I/O, etc.)
 - **Assembler**: `asm/test_assembler.py` (pytest) verifies the instruction-by-instruction encoding; `asm/test_isa_table.py` checks that the ISA table does not drift from the assembler or the disassembler.

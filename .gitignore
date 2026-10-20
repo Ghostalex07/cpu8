@@ -8,6 +8,9 @@ build/
 # --- FPGA: program.hex is copied by `make fpga`; the rest are outputs ---
 cpu8/fpga/program.hex
 
+# --- SymbiYosys: work directories created by `make formal` ---
+cpu8/formal/*/
+
 # --- Python ---
 __pycache__/
 *.py[cod]

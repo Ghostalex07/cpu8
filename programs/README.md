@@ -23,7 +23,7 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `fibonacci.asm` | Generates a Fibonacci sequence | Arithmetic, loops, registers. |
 | `incdec.asm` | `INC`/`DEC` on registers | Flags `Z,N` (INC/DEC do **not** modify `C`). |
 | `indirect.asm` | Indirect addressing `[rs]` | Register-indirect load/store. |
-| `irq.asm` | Hardware interrupt | IRQ handling with `IRQ_VECTOR=0x10`. Verifies it is handled **once**. |
+| `irq.asm` | Hardware interrupt | IRQ handling with `IRQ_VECTOR=0x10`. Verifies it is handled **once**; the handler returns with `RETI`, which restores `C,Z,N,V`. |
 | `logic.asm` | Bitwise and shift instructions | `OR`/`XOR` (Z/N from the result), `SHL`/`SHR` (the displaced bit goes to `C`) and `ROL`/`ROR` rotating **through** `C`, including the round trip `0x40 -> 0x81 -> 0x40`. |
 | `multiply.asm` | Multiplication by repeated addition | Algorithm with loops and an accumulator. |
 | `muldiv.asm` | Hardware `MUL`/`DIV` (Phase 9) | Multiplication, overflow (`C=1`), division and division by zero (`C=1`). |
@@ -33,6 +33,7 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `primes.asm` | Primes below 32 (trial division) | Nested loops + RAM cells; uses `DIV`/`MUL` for the remainder. |
 | `sort.asm` | Sorts an array with bubble sort | `.db` directive for the data and indexed `[B+off]`; sorts in place. |
 | `stack.asm` | `PUSH`/`POP` + `RET` operations | Correct stack use and address recovery. |
+| `reserved.asm` | Reserved encodings are no-ops | Executes reserved opcodes (`0xE2`, `0xFA 0xF0`) and `DI`, showing that they decode as backward-compatible no-ops and covering the decoder's defensive `default:` branches. |
 
 ## Associated files
 

@@ -48,6 +48,7 @@ _XOP_PUSHF = 0xA
 _XOP_POPF = 0xB
 _XOP_ADCW = 0xC
 _XOP_SUBW = 0xD
+_XOP_RETI = 0xE
 _RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
 
 
@@ -110,7 +111,9 @@ def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
         return f"ADCW {REGS[rd]}, {REGS[rs]}", 2
     if xop == _XOP_SUBW:
         return f"SUBW {REGS[rd]}, {REGS[rs]}", 2
-    return f"; reserved 0xFA 0x{xb:02X}", 2
+    if xop == _XOP_RETI:
+        return "RETI", 2
+    return f".db 0xFA, 0x{xb:02X}", 2
 
 
 def decodificar(mem: list[int], i: int) -> tuple[str, int]:
@@ -138,7 +141,7 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
         m = {0b00: "JMP", 0b01: "CALL"}.get(rs)
         if m is not None:
             return f"{m} L_{sig:04X}", 2
-        return f"; reserved 0x{b:02X}", 2
+        return f".db 0x{b:02X}, 0x{sig:02X}", 2
     if op == 0xD:
         return f"{_JCC[rd][rs]} L_{sig:04X}", 2
     if op == 0xE:
@@ -146,7 +149,7 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
             return f"OUT {REGS[rd]}", 1
         if rs == 1:
             return f"IN {REGS[rd]}", 1
-        return f"; reserved 0x{b:02X}", 1
+        return f".db 0x{b:02X}", 1
     if op == 0xF:
         if b == 0xF0:
             return "HLT", 1
@@ -167,8 +170,8 @@ def decodificar(mem: list[int], i: int) -> tuple[str, int]:
             return f"{m} {sig & 3}, {REGS[(sig >> 2) & 3]}", 2
         if b == 0xFA:  # extended (prefixed) instruction
             return _decodificar_ext(mem, i)
-        return f"; reserved 0x{b:02X}", 1
-    return f"; reserved 0x{b:02X}", 1  # unreachable (op is 0..F)
+        return f".db 0x{b:02X}", 1
+    return f".db 0x{b:02X}", 1  # unreachable (op is 0..F)
 
 
 def _destinos(mem: list[int]) -> set[int]:

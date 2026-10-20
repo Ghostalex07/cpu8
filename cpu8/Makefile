@@ -27,6 +27,18 @@ VERILATOR_COVERAGE ?= $(shell command -v verilator_coverage 2>/dev/null || echo 
 YOSYS    ?= $(shell command -v yosys 2>/dev/null || command -v yowasp-yosys 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys)
 NEXTPNR  ?= $(shell command -v nextpnr-ice40 2>/dev/null || command -v yowasp-nextpnr-ice40 2>/dev/null || echo $(HOME)/.local/bin/yowasp-nextpnr-ice40)
 ICEPACK  ?= $(shell command -v icepack 2>/dev/null || command -v yowasp-icepack 2>/dev/null || echo $(HOME)/.local/bin/yowasp-icepack)
+# Verilog formatter (Phase 12e): optional, `pip install verible` provides the
+# real Verible binaries.  Not part of `make check`: the RTL predates the
+# formatter, so `make fmt` would reformat the whole tree in one go.
+VERIBLE  ?= $(shell command -v verible-verilog-format 2>/dev/null || echo $(HOME)/.local/bin/verible-verilog-format)
+# Formal verification (SymbiYosys).  SBY finds yosys/smtbmc/witness through the
+# environment (the yowasp wrappers) and a SMT solver in PATH (z3, from
+# `pip install z3-solver`).
+SBY       ?= $(shell command -v sby 2>/dev/null || command -v yowasp-sby 2>/dev/null || echo $(HOME)/.local/bin/yowasp-sby)
+YOSYS_FV  ?= $(shell command -v yosys 2>/dev/null || command -v yowasp-yosys 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys)
+SMTBMC_FV ?= $(shell command -v yosys-smtbmc 2>/dev/null || command -v yowasp-yosys-smtbmc 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys-smtbmc)
+WITNESS_FV ?= $(shell command -v yosys-witness 2>/dev/null || command -v yowasp-yosys-witness 2>/dev/null || echo $(HOME)/.local/bin/yowasp-yosys-witness)
+Z3        ?= $(shell command -v z3 2>/dev/null || echo z3)
 
 IVFLAGS  ?= -g2012 -Wall
 
@@ -38,6 +50,7 @@ PROG_DIR = programs
 BUILD    = build
 VL_DIR   = $(BUILD)/verilator
 COV_DIR  = $(BUILD)/verilator-cov
+FORMAL_DIR = formal
 
 # All the testbenches: tb/<module>_tb.v
 TB_SRCS  = $(wildcard $(TB_DIR)/*_tb.v)
@@ -64,6 +77,8 @@ PROG ?= $(PROG_DIR)/countdown
 
 # FPGA: folder with the top and the constraints; program to synthesize.
 FPGA_DIR  = fpga
+# Verilog sources covered by `make fmt` / `make fmt-check`.
+V_FILES  = $(RTL_DIR)/*.v $(TB_DIR)/*.v $(FPGA_DIR)/*.v
 FPGA_PROG ?= countdown
 
 .PHONY: all test modtests progtests irqtest sim wave asm verilator vlint fpga clean dirs help trace disasm debug pytools regress regress-update difftest
@@ -163,7 +178,8 @@ debug:
 pytools:
 	$(PYTHON) -m pytest $(ASM_DIR)/test_assembler.py $(ASM_DIR)/test_isa_table.py \
 	  $(TOOLS_DIR)/test_disasm.py $(TOOLS_DIR)/test_iss.py \
-	  $(TOOLS_DIR)/test_debugger.py $(TOOLS_DIR)/test_fpga_report.py -q
+	  $(TOOLS_DIR)/test_debugger.py $(TOOLS_DIR)/test_fpga_report.py \
+	  $(TOOLS_DIR)/test_coverage_report.py -q
 
 ## --- Lint of the Python code with Ruff (config in ruff.toml) ---
 lint:
@@ -259,11 +275,31 @@ coverage: dirs $(COV_DIR)/Vcpu_sim
 	tot=$$(grep -c '^DA:' $(COV_DIR)/coverage.info || true); \
 	cov=$$(grep '^DA:' $(COV_DIR)/coverage.info | grep -vc ',0$$' || true); \
 	echo "coverage (lines): $$cov/$$tot executed $$([ "$$tot" -gt 0 ] && awk -v c=$$cov -v t=$$tot 'BEGIN {printf "(%.1f%%)", 100*c/t}' || echo '')"; \
-	echo "report: $(COV_DIR)/coverage.info and $(COV_DIR)/report/"
+	echo "report: $(COV_DIR)/coverage.info and $(COV_DIR)/report/"; \
+	$(PYTHON) $(TOOLS_DIR)/coverage_report.py $(COV_DIR)/coverage.info
 
 ## --- Analysis only (lint) of Verilator on the RTL ---
 vlint:
 	$(VERILATOR) --lint-only -Wall --top-module cpu $(RTL_DIR)/*.v
+
+## --- Verilog formatting (Phase 12e, opt-in) ---
+## `make fmt` rewrites the sources in place with Verible; `make fmt-check` only
+## reports the files that would change (exit status 1).  Run `make fmt` before
+## sending a patch, never in the middle of an unrelated change: the RTL predates
+## the formatter and a full run touches every file.
+fmt:
+	@command -v $(VERIBLE) >/dev/null 2>&1 || { \
+	  echo "verible-verilog-format not found (pip install verible)"; exit 1; }
+	$(VERIBLE) --inplace $(V_FILES)
+
+fmt-check:
+	@command -v $(VERIBLE) >/dev/null 2>&1 || { \
+	  echo "verible-verilog-format not found (pip install verible)"; exit 1; }
+	@rc=0; for f in $(V_FILES); do \
+	  if ! $(VERIBLE) "$$f" | diff -q "$$f" - >/dev/null; then \
+	    echo "needs formatting: $$f"; rc=1; \
+	  fi; \
+	done; exit $$rc
 
 ## --- FPGA (Phase 7.6): synthesis for iCEstick (iCE40HX1K, TQ144) ---
 ## Assembles FPGA_PROG, loads its .hex into RAM (via -DRAM_INIT) and generates the
@@ -290,12 +326,26 @@ fpga-check: dirs
 	  || { tail -n 40 $(BUILD)/fpga.log; exit 1; }
 	@$(PYTHON) $(TOOLS_DIR)/fpga_report.py $(BUILD)/fpga.log
 
+## --- Formal verification (SymbiYosys): bounded proofs with z3 ---
+##   make formal
+## Each formal/*.sby runs in its own work directory; `-f` overwrites it.
+formal: dirs
+	@set -e; \
+	for f in $(FORMAL_DIR)/*.sby; do \
+	  echo "=== formal: $$(basename $$f .sby) ==="; \
+	  ( cd $(FORMAL_DIR) && \
+	    YOSYS="$(YOSYS_FV)" SMTBMC="$(SMTBMC_FV)" WITNESS="$(WITNESS_FV)" \
+	    PATH="$(dir $(Z3)):$$PATH" $(SBY) -f "$$(basename $$f)" ); \
+	done
+	@echo "formal: all proofs passed"
+
 clean:
 	rm -rf $(BUILD)
+	rm -rf $(FORMAL_DIR)/alu $(FORMAL_DIR)/control
 
 .PHONY: all test modtests irqtest progtests asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest regress regress-update verilator \
-	coverage vlint fpga fpga-check clean help check
+	coverage vlint fmt fmt-check fpga fpga-check formal clean help check
 
 ## --- Full local battery: the same as CI runs ---
 check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
@@ -305,8 +355,11 @@ help:
 	@echo "make verilator                     (simulates the RTL with Verilator)"
 	@echo "make coverage                      (Verilator coverage report of the RTL)"
 	@echo "make vlint                         (Verilator -Wall analysis only of the RTL)"
+	@echo "make fmt                           (format the Verilog sources with Verible)"
+	@echo "make fmt-check                     (report the Verilog files Verible would change)"
 	@echo "make fpga FPGA_PROG=<name>         (synthesizes a bitstream for iCEstick)"
 	@echo "make fpga-check FPGA_PROG=<name>   (fpga + area/timing budget check)"
+	@echo "make formal                        (SymbiYosys proofs of the ALU and the FSM)"
 	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"
 	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"
 	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"

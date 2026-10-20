@@ -45,17 +45,18 @@ def ejecutar(texto: str, max_steps: int = 5000) -> iss.ISS:
 #  ALU: flags
 # ---------------------------------------------------------------------------
 
+
 def test_alu_suma_acarreo_y_v() -> None:
     y, c, v, z, n = iss.alu(iss.ADD, 0, 0xFF, 0x01)
-    assert (y, c, v, z, n) == (0x00, 1, 0, 1, 0)      # 0xFF+1 -> C=1, Z=1
+    assert (y, c, v, z, n) == (0x00, 1, 0, 1, 0)  # 0xFF+1 -> C=1, Z=1
     y, c, v, z, n = iss.alu(iss.ADD, 0, 0x7F, 0x01)
-    assert (y, c, v, z, n) == (0x80, 0, 1, 0, 1)      # signed overflow
+    assert (y, c, v, z, n) == (0x80, 0, 1, 0, 1)  # signed overflow
 
 
 def test_alu_resta_c_es_no_borrow() -> None:
-    assert iss.alu(iss.SUB, 0, 0x05, 0x03)[1] == 1    # 5-3: no borrow -> C=1
-    assert iss.alu(iss.SUB, 0, 0x03, 0x05)[1] == 0    # 3-5: borrow -> C=0
-    assert iss.alu(iss.SUB, 0, 0x80, 0x01)[2] == 1    # -128-1 -> V=1
+    assert iss.alu(iss.SUB, 0, 0x05, 0x03)[1] == 1  # 5-3: no borrow -> C=1
+    assert iss.alu(iss.SUB, 0, 0x03, 0x05)[1] == 0  # 3-5: borrow -> C=0
+    assert iss.alu(iss.SUB, 0, 0x80, 0x01)[2] == 1  # -128-1 -> V=1
 
 
 def test_alu_logica_pone_c_y_v_a_cero() -> None:
@@ -70,15 +71,16 @@ def test_alu_shift() -> None:
 
 
 def test_alu_mul_div() -> None:
-    assert iss.alu(iss.MUL, 0, 7, 6)[:2] == (42, 0)      # 7*6 = 42, no overflow
-    assert iss.alu(iss.MUL, 0, 0x14, 0x14)[:2] == (0x90, 1)   # 20*20=400 -> C=1
-    assert iss.alu(iss.DIV, 0, 200, 7)[:2] == (28, 0)    # 200/7 = 28
-    assert iss.alu(iss.DIV, 0, 5, 0)[:2] == (0, 1)       # /0 -> 0 and error C=1
+    assert iss.alu(iss.MUL, 0, 7, 6)[:2] == (42, 0)  # 7*6 = 42, no overflow
+    assert iss.alu(iss.MUL, 0, 0x14, 0x14)[:2] == (0x90, 1)  # 20*20=400 -> C=1
+    assert iss.alu(iss.DIV, 0, 200, 7)[:2] == (28, 0)  # 200/7 = 28
+    assert iss.alu(iss.DIV, 0, 5, 0)[:2] == (0, 1)  # /0 -> 0 and error C=1
 
 
 # ---------------------------------------------------------------------------
 #  Instruction-level semantics
 # ---------------------------------------------------------------------------
+
 
 def test_inc_no_toca_c_pero_si_v() -> None:
     m = ejecutar("""
@@ -97,7 +99,7 @@ def test_inc_no_toca_c_pero_si_v() -> None:
     """)
     assert m.regs[0] == 0x80
     assert (m.fz, m.fn, m.fv) == (0, 1, 1)
-    assert m.fc == 1      # INC does not touch C (still the 1 from the last CMP)
+    assert m.fc == 1  # INC does not touch C (still the 1 from the last CMP)
 
 
 def test_add_si_toca_c() -> None:
@@ -147,10 +149,14 @@ def test_ld_st_indexado() -> None:
 
 def test_jcc_familias() -> None:
     # Signed JLT: -1 < 0
-    m = ejecutar("LDI A, 0xFF\nLDI B, 0x00\nCMP A, B\nJLT si\nLDI C, 0x00\nHLT\nsi:\nLDI C, 0x01\nHLT")
+    m = ejecutar(
+        "LDI A, 0xFF\nLDI B, 0x00\nCMP A, B\nJLT si\nLDI C, 0x00\nHLT\nsi:\nLDI C, 0x01\nHLT"
+    )
     assert m.regs[2] == 0x01
     # JGE does not jump
-    m = ejecutar("LDI A, 0xFF\nLDI B, 0x00\nCMP A, B\nJGE si\nLDI C, 0x00\nHLT\nsi:\nLDI C, 0x01\nHLT")
+    m = ejecutar(
+        "LDI A, 0xFF\nLDI B, 0x00\nCMP A, B\nJGE si\nLDI C, 0x00\nHLT\nsi:\nLDI C, 0x01\nHLT"
+    )
     assert m.regs[2] == 0x00
 
 
@@ -162,34 +168,60 @@ def test_puertos_in_out() -> None:
 
 
 def test_branch_cond_y_needs_operand() -> None:
-    assert iss.needs_operand(0x10) is True     # LDI
-    assert iss.needs_operand(0xC0) is True     # JMP
-    assert iss.needs_operand(0xF6) is True     # MUL
-    assert iss.needs_operand(0xE0) is False    # OUT rd
-    assert iss.needs_operand(0xF0) is False    # HLT
+    assert iss.needs_operand(0x10) is True  # LDI
+    assert iss.needs_operand(0xC0) is True  # JMP
+    assert iss.needs_operand(0xF6) is True  # MUL
+    assert iss.needs_operand(0xE0) is False  # OUT rd
+    assert iss.needs_operand(0xF0) is False  # HLT
 
 
 def _prog_irq() -> list[int]:
     """LDI A,0 ; EI ; [0x03] JMP 0x03 (loop) ; [0x08] LDI A,0x42 ; RET."""
-    return [0x10, 0x00, 0xF2, 0xC0, 0x03, 0x00, 0x00, 0x00,
-            0x10, 0x42, 0xF1]
+    return [0x10, 0x00, 0xF2, 0xC0, 0x03, 0x00, 0x00, 0x00, 0x10, 0x42, 0xF1]
 
 
 def test_irq_se_atiende_en_el_vector() -> None:
     m = iss.ISS(_prog_irq(), irq_at=3)
     m.run(20)
-    assert 0x08 in [r[0] for r in m.rows]   # the handler ran (vector 0x08)
-    assert m.regs[0] == 0x42                 # ...which set A=0x42
+    assert 0x08 in [r[0] for r in m.rows]  # the handler ran (vector 0x08)
+    assert m.regs[0] == 0x42  # ...which set A=0x42
 
 
 def test_irq_no_se_atiende_sin_ei() -> None:
     # Without EI the I flag is 0: even if irq is requested from the start, it is
     # not serviced.
-    prog = [0x10, 0x00, 0xC0, 0x02]          # LDI A,0 ; JMP 0x02 (loop)
+    prog = [0x10, 0x00, 0xC0, 0x02]  # LDI A,0 ; JMP 0x02 (loop)
     m = iss.ISS(prog, irq_at=0)
     m.run(10)
     assert 0x08 not in [r[0] for r in m.rows]
     assert m.regs[0] == 0x00
+
+
+def test_reti_restaura_banderas_y_no_reactiva_irq() -> None:
+    # CMP A,A sets C=1; the handler clobbers the flags and returns with RETI,
+    # so the ADC right after the return still sees C=1 (0 -> 2).  I stays 0
+    # after RETI, so the level-high irq is not taken a second time.
+    programa = ensambla_hexa(
+        """
+        LDI A, 0
+        LDI B, 1
+        LDI D, 3
+        CMP A, A
+        EI
+    loop: OUT A
+        ADC A, B
+        DEC D
+        JNZ loop
+        HLT
+        NOP
+        ADD C, B
+        OUT C
+        RETI
+        """
+    )
+    m = iss.ISS(programa, irq_at=0, irq_vector=0x10)
+    m.run(200)
+    assert [v for v, _ in m.outs] == [1, 0, 2, 3]
 
 
 # ---------------------------------------------------------------------------

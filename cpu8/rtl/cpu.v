@@ -56,6 +56,7 @@ module cpu #(
     reg       flag_n;    // N (negative)
     reg       flag_v;    // V (signed overflow)
     reg       flag_i;    // I (interrupts enabled)
+    reg [3:0] flags_saved; // C,Z,N,V captured when the interrupt is taken
     reg       c16;       // carry of the low-byte add of ADCW/SUBW (S_EXEC2)
     reg       z16;       // "low byte == 0" of ADCW/SUBW (S_EXEC2 -> Z)
     reg [7:0] SP;        // stack pointer (starts at 0xF0)
@@ -74,6 +75,7 @@ module cpu #(
     wire       ext, xop_ld, rf_we2, addr_alu;
     wire       flag_ld, sel_ram_fl, pair16_ld, pair16_hi;
     wire       pc_from_vec, flag_i_set, flag_i_clear;
+    wire       flag_save, flag_restore;
     wire       sel_in, io_op;
 
     // Current instruction: always from the IR register.  Decoding from
@@ -112,6 +114,7 @@ module cpu #(
         .pair16_ld(pair16_ld), .pair16_hi(pair16_hi),
         .pc_from_vec(pc_from_vec), .flag_i_set(flag_i_set),
         .flag_i_clear(flag_i_clear),
+        .flag_save(flag_save), .flag_restore(flag_restore),
         .sel_in(sel_in), .io_op(io_op),
         .halted(halted)
     );
@@ -211,6 +214,7 @@ module cpu #(
             flag_n   <= 1'b0;
             flag_v   <= 1'b0;
             flag_i   <= 1'b0;
+            flags_saved <= 4'b0000;
             c16      <= 1'b0;
             z16      <= 1'b0;
 `ifdef FPGA_RAM64
@@ -245,6 +249,8 @@ module cpu #(
                 flag_v <= ram_rdata[3];
                 flag_i <= ram_rdata[4];
             end
+            if (flag_save)    flags_saved <= {flag_v, flag_n, flag_z, flag_c};
+            if (flag_restore) {flag_v, flag_n, flag_z, flag_c} <= flags_saved;
             if (sp_dec)      SP <= SP - 8'd1;
             else if (sp_inc) SP <= SP + 8'd1;
             if (out_wr) begin

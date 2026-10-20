@@ -40,6 +40,7 @@ XOP_SWAP, XOP_ROL, XOP_ROR = 0x4, 0x5, 0x6
 XOP_LDW, XOP_STW = 0x7, 0x8
 XOP_TEST, XOP_PUSHF, XOP_POPF = 0x9, 0xA, 0xB
 XOP_ADCW, XOP_SUBW = 0xC, 0xD
+XOP_RETI = 0xE
 
 # FSM states (only to document detection; the ISS is not cycle-accurate).
 S_FETCH, S_OPR, S_EXEC, S_IRQ, S_HLT = 0, 1, 2, 3, 4
@@ -181,6 +182,7 @@ class ISS:
         self.operand = 0
         self.xop = 0
         self.fz = self.fc = self.fn = self.fv = self.fi = 0
+        self.flags_saved = (0, 0, 0, 0)  # C,Z,N,V captured on IRQ entry
         self.out_data = 0
         self.out_port = 0
         self.halted = False
@@ -269,6 +271,10 @@ class ISS:
                 self.fc, self.fz = fb & 1, (fb >> 1) & 1
                 self.fn, self.fv = (fb >> 2) & 1, (fb >> 3) & 1
                 self.fi = (fb >> 4) & 1
+            elif xop == XOP_RETI:  # RETI: RET + restore the flags saved on entry
+                self.SP = (self.SP + 1) & MASK
+                self.PC = self.mem[self.SP]
+                self.fc, self.fz, self.fn, self.fv = self.flags_saved
             elif xop in (XOP_ADCW, XOP_SUBW):
                 # 16-bit pair op in two steps, mirroring S_EXEC + S_EXEC2:
                 # low byte first (carry captured in c), then the high bytes
@@ -396,6 +402,7 @@ class ISS:
         """
         self.mem[self.SP] = self.PC
         self.SP = (self.SP - 1) & MASK
+        self.flags_saved = (self.fc, self.fz, self.fn, self.fv)
         self.fi = 0
         self.PC = self.irq_vector
 

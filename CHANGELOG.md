@@ -8,6 +8,36 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Added
 
+- **Formal verification** (`make formal`): SymbiYosys + z3 proofs under
+  `cpu8/formal/`. `alu.sby` checks `rtl/alu.v` against an exhaustive reference
+  model for every operation and operand (result plus the four flags);
+  `control.sby` proves that the control FSM never enters the reserved state `7`
+  (and recovers to `S_FETCH` if it ever did). A dedicated `formal` CI job installs
+  the pinned YoWASP Yosys and `z3-solver` wheels and runs the proofs.
+- **`RETI` and flags across interrupts** (`0xFA 0xE0`, Phase 13): the interrupt
+  entry saves `C,Z,N,V` in a shadow register and `RETI` pops the return PC (like
+  `RET`) and restores them. `I` is deliberately left cleared so a level-triggered
+  IRQ cannot re-enter the handler; use `EI` to re-enable interrupts. The
+  assembler, disassembler, ISS, ISA table, `programs/irq.asm` and the docs are
+  updated; the encoding reuses a previously reserved `0xFA` sub-operation.
+- **Assembler stack guard**: the two-pass assembler now rejects an image that
+  reaches `0xE0` or beyond. `SP` starts at `0xF0` and `PUSH` decrements it, so the
+  last 16 bytes are stack; the error points at the line that crosses the limit
+  instead of letting the program corrupt its own stack at run time.
+- **`programs/reserved.asm` demo**: runs reserved encodings (`0xE2` and
+  `0xFA 0xF0`) and `DI`, proving that they decode as backward-compatible no-ops
+  and covering the defensive `default:` branches of `rtl/control.v`. Line
+  coverage rises to 99.4 % (513/516); the three remaining lines are unreachable
+  defaults (all 16 opcode pages are implemented, the FSM proof rules out state 7)
+  and the default hex file of the co-simulation testbench.
+- **Coverage floor** (`tools/coverage_report.py`): `make coverage` now fails when
+  line coverage drops below 95 %. The CI `coverage` job is no longer
+  `continue-on-error`: it enforces the same threshold and still uploads the
+  annotated report as an artefact.
+- **Verilog formatting** (`make fmt`, `make fmt-check`): optional Verible targets
+  (`pip install verible`). `make fmt` rewrites `rtl/`, `tb/` and `fpga/` in place
+  and `make fmt-check` lists the files that would change. They stay out of
+  `make check` because the existing RTL predates the formatter.
 - **Extended ISA with the `0xFA` prefix** (`cpu8/docs/ISA.md` §10.10): `NEG`,
   `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR` (2 bytes) and the 16-bit
   indexed `LDW`/`STW` (3 bytes), all additive and backward compatible. The RTL
@@ -55,14 +85,14 @@ The project does not publish numbered releases yet, so changes are grouped under
   design is calibrated with — the distro nextpnr 0.6 places the design at 11.35 MHz
   and aborts before the check even runs), runs `make fpga` on the iCE40HX1K and
   then `cpu8/tools/fpga_report.py`, which fails the build if the design exceeds
-  80 % of the logic cells or misses the 12 MHz timing target (currently 823/1280
-  LCs, ~14 MHz). `make fpga-check` runs the same check locally. The Makefile now
+  80 % of the logic cells or misses the 12 MHz timing target (currently 826/1280
+  LCs, ~14.9 MHz). `make fpga-check` runs the same check locally. The Makefile now
   also finds `nextpnr-ice40` and `icepack` from YoWASP on the `PATH`.
 - **CI caching and artefacts**: pip caching keyed on
   `.github/requirements-ci.txt` / `.github/requirements-fpga.txt` so the FPGA job
   no longer re-downloads the ~85 MB YoWASP toolchain on every run; a failing
-  `fpga` job uploads its `build/fpga.log`, and an informational, non-blocking
-  `coverage` job publishes the annotated RTL coverage report as an artefact. The
+  `fpga` job uploads its `build/fpga.log`, and the `coverage` job enforces the
+  95 % line floor and publishes the annotated RTL coverage report as an artefact. The
   workflow also cancels superseded runs on non-`main` branches.
 - **ISA table as the single source of truth** (`cpu8/asm/isa_table.py`,
   *machine-readable*): a declarative description of every instruction (operand

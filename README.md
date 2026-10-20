@@ -63,9 +63,12 @@ make pytools     # pytest: assembler, ISA table, disassembler, ISS model and deb
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
 make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
+make formal      # SymbiYosys proofs of the ALU and the FSM
+make fpga-check  # FPGA synthesis + area/timing budget
+make fmt         # format the Verilog sources with Verible (opt-in)
 make difftest    # differential RTL-vs-model fuzzing
 make regress     # byte + trace regression + round-trip fuzzing
-make check       # all of the above (the same suite CI runs)
+make check       # the same suite CI runs for a push
 
 make sim  PROG=programs/countdown   # simulate a program (compares with its .ref)
 make wave PROG=programs/countdown   # same, and opens GTKWave
@@ -158,12 +161,19 @@ The project relies on several layers of checking, all runnable locally:
   in the ALU.
 - **Example programs**: each `programs/*.asm` is assembled, simulated with
   `cpu_tb.v` and its `OUT` output is compared with `programs/*.ref`.
-- **Interrupts**: `irq_tb.v` checks IRQ handling.
+- **Interrupts**: `irq_tb.v` checks IRQ handling; `RETI` restores the arithmetic
+  flags saved on entry.
 - **Co-simulation** with Verilator (`make verilator`).
+- **Formal verification** (`make formal`): SymbiYosys proves, with the `z3`
+  solver, that the ALU matches an exhaustive reference model for every
+  operation/operand (result and all four flags) and that the control FSM never
+  reaches the reserved state `7`. The `formal/` directory holds the `.sby` and
+  `_fv.sv` files; the job runs in CI too.
 - **Coverage** of the RTL with `make coverage`: Verilator instruments a separate
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under
-  `build/verilator-cov/`.
+  `build/verilator-cov/`. The target fails if line coverage drops below 95 %
+  (`tools/coverage_report.py`); the demo suite currently reaches 99.4 %.
 - **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
   bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
   job — fails if the design outgrows the area budget or misses the 12 MHz timing
@@ -187,11 +197,15 @@ The project relies on several layers of checking, all runnable locally:
   programs.
 - **Linters**: `make vlint` (Verilator `-Wall` over the RTL) and `make lint` (ruff
   over the Python code).
+- **Formatting**: `make fmt` rewrites the Verilog sources with Verible and
+  `make fmt-check` lists the files that would change. Both are opt-in: the RTL
+  predates the formatter, so applying it touches every file.
 
 All of it runs in **GitHub Actions** on every push and *pull request*
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): one job runs the test
-suite, another synthesizes the FPGA design and enforces the area/timing budget,
-and an informational job publishes the RTL coverage report.
+suite, another proves the ALU and the FSM with SymbiYosys, another synthesizes
+the FPGA design and enforces the area/timing budget, and one enforces the 95 %
+line-coverage floor and publishes the annotated report.
 
 ---
 

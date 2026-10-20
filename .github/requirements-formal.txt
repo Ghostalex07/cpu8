@@ -1,0 +1,10 @@
+# SymbiYosys formal proofs for the CI `formal` job, installed with pip (YoWASP).
+#
+# The `yowasp-yosys` wheel bundles the whole Yosys/SymbiYosys stack: it provides
+# `yowasp-sby`, `yowasp-yosys`, `yowasp-yosys-smtbmc` and
+# `yowasp-yosys-witness` (there is no separate `yowasp-sby` package).  `z3-solver`
+# provides the `z3` binary that the `smtbmc` engine runs.
+#
+# Used by actions/setup-python as the cache key (cache: pip).
+yowasp-yosys==0.70.0.0.post1259
+z3-solver==5.3.1.0
