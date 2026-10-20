@@ -1,13 +1,50 @@
 # Changelog
 
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-The project does not publish numbered releases yet, so changes are grouped under
-*Unreleased*.
+Changes are grouped under *Unreleased* until a tag is cut; `v1.0.0` is the
+first numbered release.
 
 ## [Unreleased]
 
 ### Added
 
+- **Conditional breakpoints** (`tools/debugger.py`): `break <addr|label> if
+  <expr>` stops only when the expression holds. The grammar covers registers
+  `A`-`D`, `SP`/`PC`, the flags `CF`/`ZF`/`NF`/`VF`/`IF` (the `fC`/... forms are
+  accepted too), memory cells (`@0x40`, `@label`), decimal/hex literals,
+  `== != < <= > >=`, `&&`, `||` and parentheses. A small recursive-descent
+  parser compiles the expression; nothing is passed to Python `eval`. An invalid
+  condition is rejected without touching the existing breakpoint, and
+  `delete`/`clear` remove the condition with the address. `break` without
+  arguments and `bl` list every breakpoint with its expression.
+- **`tb/flag_i_tb.v`**: directed RTL test of the interrupt flag. `DI` before an
+  interrupt request suppresses the handler, `EI` re-enables it, `PUSHF`/`POPF`
+  round-trip the `I` bit and `RETI` leaves it cleared; the testbench embeds a
+  program, raises the IRQ after the first `OUT` and expects `1, 2, 255`.
+  `tools/test_iss.py` gains nine matching ISS tests (`EI`, `DI`, `PUSHF`,
+  `POPF`, `RETI` and the IRQ entry), so the reference model and the RTL agree on
+  the flag.
+- **FSM formal properties** (`formal/control.sby`, `formal/control_fv.sv`):
+  BMC at depth 12 with the flattened FSM state wired to observation wires
+  (`connect -set`). The properties cover the synchronous reset, the seven legal
+  encodings, `S_HLT` stuttering until reset, the legal transition set of every
+  state, interrupt entry only from `S_FETCH` with `flag_i && irq`, the
+  interrupt-cycle actions and the mutual exclusion of the control outputs.
+- **Cover trace** (`formal/control_cover.sby`): SymbiYosys strips `$cover`
+  cells in `bmc` mode, so a separate `mode cover` run at depth 12 checks that
+  all seven states, the interesting transitions and a stack operation are
+  reachable with the same harness.
+- **`make difftest-long`**: long differential fuzz (`COUNT=10000`, `SEED=1` by
+  default). The nightly CI job runs it at 03:00 UTC with the run number as the
+  seed; a manual `workflow_dispatch` can request it with the `long` input. The
+  regular `test` job keeps the 150-program run.
+- **CI `fmt` job**: `make fmt-check` is now enforced on every push/PR in its own
+  fast job, with the pinned `verible==0.0.4071.0`. The `fpga` job publishes the
+  bitstream as the `fpga-bitstream` artifact (30 days, `if-no-files-found:
+  error`).
+- **Dependabot** (`.github/dependabot.yml`): weekly grouped minor/patch PRs for
+  the `github-actions` pins and for the pip requirements in `.github/`; major
+  bumps arrive as individual PRs.
 - **Formal verification** (`make formal`): SymbiYosys + z3 proofs under
   `cpu8/formal/`. `alu.sby` checks `rtl/alu.v` against an exhaustive reference
   model for every operation and operand (result plus the four flags);
@@ -27,17 +64,18 @@ The project does not publish numbered releases yet, so changes are grouped under
 - **`programs/reserved.asm` demo**: runs reserved encodings (`0xE2` and
   `0xFA 0xF0`) and `DI`, proving that they decode as backward-compatible no-ops
   and covering the defensive `default:` branches of `rtl/control.v`. Line
-  coverage rises to 99.4 % (513/516); the three remaining lines are unreachable
-  defaults (all 16 opcode pages are implemented, the FSM proof rules out state 7)
-  and the default hex file of the co-simulation testbench.
+  coverage reaches **100 % (605/605)**: the two remaining unreachable defaults
+  are marked with justified `coverage_off` pragmas, and the coverage floor is
+  still enforced at 95 %.
 - **Coverage floor** (`tools/coverage_report.py`): `make coverage` now fails when
   line coverage drops below 95 %. The CI `coverage` job is no longer
   `continue-on-error`: it enforces the same threshold and still uploads the
   annotated report as an artefact.
 - **Verilog formatting** (`make fmt`, `make fmt-check`): optional Verible targets
-  (`pip install verible`). `make fmt` rewrites `rtl/`, `tb/` and `fpga/` in place
-  and `make fmt-check` lists the files that would change. They stay out of
-  `make check` because the existing RTL predates the formatter.
+  (`pip install verible==0.0.4071.0`). `make fmt` rewrites `rtl/`, `tb/` and
+  `fpga/` in place and `make fmt-check` lists the files that would change. They
+  stay out of `make check` (which mirrors the CI `test` job) but the dedicated
+  `fmt` CI job enforces `fmt-check`.
 - **Extended ISA with the `0xFA` prefix** (`cpu8/docs/ISA.md` §10.10): `NEG`,
   `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR` (2 bytes) and the 16-bit
   indexed `LDW`/`STW` (3 bytes), all additive and backward compatible. The RTL
@@ -126,6 +164,14 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Changed
 
+- `make fmt-check` is no longer optional: a `fmt` CI job enforces it, and the
+  RTL, testbenches and FPGA sources were reformatted in place with Verible
+  0.0.4071.0 so a fresh checkout is green. Run `make fmt` after bumping
+  Verible, since another release may produce different output.
+- CI dependencies and Actions are pinned for reproducibility:
+  `.github/requirements-ci.txt` pins `pytest==9.0.2`, `ruff==0.16.1` and
+  `verible==0.0.4071.0`, and every `uses:` references a full commit SHA with a
+  `# vX.Y.Z` comment (Dependabot maintains both).
 - `make pytools` now collects every test under `asm/` and `tools/` instead of a
   hard-coded list, so a new `test_*.py` runs in CI without editing the Makefile.
 - `make clean` also removes every `formal/*/` work directory and the generated
@@ -142,6 +188,10 @@ The project does not publish numbered releases yet, so changes are grouped under
 
 ### Fixed
 
+- `make fmt-check` inspected nothing: it piped the file list to Verible's
+  stdin, and the formatter ignored those names and produced no output, so the
+  target passed even with unformatted sources. It now passes the files as
+  arguments and fails on the first diff.
 - `rtl/ram.v`: a synchronous reset no longer commits a pending write (ST, PUSH,
   CALL, PUSHF, STW or the interrupt push landed in RAM on the reset edge).
 - The FPGA build now uses the full 256-byte RAM (the `FPGA_RAM64` variant
