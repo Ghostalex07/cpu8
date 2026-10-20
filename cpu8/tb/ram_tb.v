@@ -15,89 +15,109 @@
 //  on the rising edge.  That is why `chk` waits for the falling edge before
 //  checking rdata.
 // ============================================================================
-`timescale 1ns/1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module ram_tb;
 
-    reg clk = 0, rst = 0, we = 0;
-    reg [7:0] addr = 0, wdata = 0;
-    wire [7:0] rdata;
+  reg clk = 0, rst = 0, we = 0;
+  reg [7:0] addr = 0, wdata = 0;
+  wire [7:0] rdata;
 
-    integer errors = 0;
+  integer errors = 0;
 
-    ram dut (
-        .clk(clk), .rst(rst), .we(we), .addr(addr), .wdata(wdata), .rdata(rdata)
-    );
+  ram dut (
+      .clk(clk),
+      .rst(rst),
+      .we(we),
+      .addr(addr),
+      .wdata(wdata),
+      .rdata(rdata)
+  );
 
-    always #5 clk = ~clk;
+  always #5 clk = ~clk;
 
-    // Reads address `a` (waits for the falling edge: registered read) and
-    // compares with the expected value.
-    task chk;
-        input [7:0] a;
-        input [7:0] exp;
-        begin
-            addr = a; @(negedge clk); #1;
-            if (rdata !== exp) begin
-                errors = errors + 1;
-                $display("  FAIL RAM[%02h]=%02h (expected %02h)", a, rdata, exp);
-            end
-        end
-    endtask
-
-    // Writes `d` to address `a` for one cycle.
-    task wr;
-        input [7:0] a;
-        input [7:0] d;
-        begin
-            we = 1; addr = a; wdata = d; @(posedge clk); #1; we = 0;
-        end
-    endtask
-
-    initial begin
-        $display("=== RAM testbench ===");
-
-        // 1) Load with $readmemh (hierarchical access to the internal memory).
-        //    We specify the range [0:7] so as not to warn that the .hex has
-        //    fewer than 256 words.
-        $readmemh("tb/ram_init.hex", dut.mem, 0, 7);
-        chk(8'h00, 8'hA5);
-        chk(8'h01, 8'h5A);
-        chk(8'h02, 8'h00);
-        chk(8'h03, 8'hFF);
-        chk(8'h04, 8'h12);
-        chk(8'h07, 8'h78);
-
-        // 2) Synchronous write and registered read.
-        wr(8'h10, 8'hDE);
-        chk(8'h10, 8'hDE);
-        wr(8'hFF, 8'h42);
-        chk(8'hFF, 8'h42);
-
-        // 3) Rewrite of a position loaded by $readmemh.
-        wr(8'h00, 8'h11);
-        chk(8'h00, 8'h11);
-
-        // 4) we=0 must not change anything.
-        we = 0; addr = 8'h10; wdata = 8'h00; @(posedge clk); #1;
-        chk(8'h10, 8'hDE);
-
-        // 5) A write coinciding with reset must not reach the memory.
-        wr(8'h20, 8'h5A);
-        chk(8'h20, 8'h5A);
-        rst = 1; we = 1; addr = 8'h20; wdata = 8'hA5;
-        @(posedge clk); #1; we = 0; rst = 0;
-        chk(8'h20, 8'h5A);
-
-        if (errors == 0)
-            $display("RAM: ALL TESTS PASSED");
-        else
-            $display("RAM: %0d FAILURES", errors);
-
-        if (errors != 0) $fatal(1, "RAM: there are failures, check above");
-        $finish;
+  // Reads address `a` (waits for the falling edge: registered read) and
+  // compares with the expected value.
+  task chk;
+    input [7:0] a;
+    input [7:0] exp;
+    begin
+      addr = a;
+      @(negedge clk);
+      #1;
+      if (rdata !== exp) begin
+        errors = errors + 1;
+        $display("  FAIL RAM[%02h]=%02h (expected %02h)", a, rdata, exp);
+      end
     end
+  endtask
+
+  // Writes `d` to address `a` for one cycle.
+  task wr;
+    input [7:0] a;
+    input [7:0] d;
+    begin
+      we = 1;
+      addr = a;
+      wdata = d;
+      @(posedge clk);
+      #1;
+      we = 0;
+    end
+  endtask
+
+  initial begin
+    $display("=== RAM testbench ===");
+
+    // 1) Load with $readmemh (hierarchical access to the internal memory).
+    //    We specify the range [0:7] so as not to warn that the .hex has
+    //    fewer than 256 words.
+    $readmemh("tb/ram_init.hex", dut.mem, 0, 7);
+    chk(8'h00, 8'hA5);
+    chk(8'h01, 8'h5A);
+    chk(8'h02, 8'h00);
+    chk(8'h03, 8'hFF);
+    chk(8'h04, 8'h12);
+    chk(8'h07, 8'h78);
+
+    // 2) Synchronous write and registered read.
+    wr(8'h10, 8'hDE);
+    chk(8'h10, 8'hDE);
+    wr(8'hFF, 8'h42);
+    chk(8'hFF, 8'h42);
+
+    // 3) Rewrite of a position loaded by $readmemh.
+    wr(8'h00, 8'h11);
+    chk(8'h00, 8'h11);
+
+    // 4) we=0 must not change anything.
+    we = 0;
+    addr = 8'h10;
+    wdata = 8'h00;
+    @(posedge clk);
+    #1;
+    chk(8'h10, 8'hDE);
+
+    // 5) A write coinciding with reset must not reach the memory.
+    wr(8'h20, 8'h5A);
+    chk(8'h20, 8'h5A);
+    rst = 1;
+    we = 1;
+    addr = 8'h20;
+    wdata = 8'hA5;
+    @(posedge clk);
+    #1;
+    we  = 0;
+    rst = 0;
+    chk(8'h20, 8'h5A);
+
+    if (errors == 0) $display("RAM: ALL TESTS PASSED");
+    else $display("RAM: %0d FAILURES", errors);
+
+    if (errors != 0) $fatal(1, "RAM: there are failures, check above");
+    $finish;
+  end
 
 endmodule
 

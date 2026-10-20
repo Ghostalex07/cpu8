@@ -13,7 +13,7 @@
 //  Register indices (match the rd/rs field of the ISA):
 //    A = 00, B = 01, C = 10, D = 11
 // ============================================================================
-`timescale 1ns/1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module regfile (
@@ -31,34 +31,34 @@ module regfile (
     output wire [7:0] rdata2   // value of register raddr2
 );
 
-    // Symbolic names of the register indices.
-    localparam [1:0] R_A = 2'b00;
-    localparam [1:0] R_B = 2'b01;
-    localparam [1:0] R_C = 2'b10;
-    localparam [1:0] R_D = 2'b11;
+  // Symbolic names of the register indices.
+  localparam [1:0] R_A = 2'b00;
+  localparam [1:0] R_B = 2'b01;
+  localparam [1:0] R_C = 2'b10;
+  localparam [1:0] R_D = 2'b11;
 
-    // The four registers. `regs[i]` is the register with index i.
-    reg [7:0] regs [0:3];
+  // The four registers. `regs[i]` is the register with index i.
+  reg [7:0] regs[0:3];
 
-    // Write and reset, both SYNCHRONOUS (they only change on the rising edge).
-    // The reset has priority over the writes.  When SWAP writes two DIFFERENT
-    // registers there is no conflict; with rd==rs both ports write the same
-    // (unchanged) value, which is a harmless no-op.
-    always @(posedge clk) begin
-        if (rst) begin
-            regs[R_A] <= 8'h00;
-            regs[R_B] <= 8'h00;
-            regs[R_C] <= 8'h00;
-            regs[R_D] <= 8'h00;
-        end else begin
-            if (we)  regs[waddr]  <= wdata;
-            if (we2) regs[waddr2] <= wdata2;
-        end
+  // Write and reset, both SYNCHRONOUS (they only change on the rising edge).
+  // The reset has priority over the writes.  When SWAP writes two DIFFERENT
+  // registers there is no conflict; with rd==rs both ports write the same
+  // (unchanged) value, which is a harmless no-op.
+  always @(posedge clk) begin
+    if (rst) begin
+      regs[R_A] <= 8'h00;
+      regs[R_B] <= 8'h00;
+      regs[R_C] <= 8'h00;
+      regs[R_D] <= 8'h00;
+    end else begin
+      if (we) regs[waddr] <= wdata;
+      if (we2) regs[waddr2] <= wdata2;
     end
+  end
 
-    // Combinational read: the value appears as soon as the address changes.
-    assign rdata1 = regs[raddr1];
-    assign rdata2 = regs[raddr2];
+  // Combinational read: the value appears as soon as the address changes.
+  assign rdata1 = regs[raddr1];
+  assign rdata2 = regs[raddr2];
 
 endmodule
 

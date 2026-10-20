@@ -10,7 +10,7 @@
 //  The control unit will never enable `load` and `inc` at the same time; if it
 //  did, `load` wins by this order.
 // ============================================================================
-`timescale 1ns/1ps
+`timescale 1ns / 1ps
 `default_nettype none
 
 module pc (
@@ -22,12 +22,12 @@ module pc (
     output reg  [7:0] q
 );
 
-    always @(posedge clk) begin
-        if (rst)        q <= 8'h00;
-        else if (load)  q <= d_in;
-        else if (inc)   q <= q + 8'd1;
-        // otherwise it holds the value (not written => no else branch needed)
-    end
+  always @(posedge clk) begin
+    if (rst) q <= 8'h00;
+    else if (load) q <= d_in;
+    else if (inc) q <= q + 8'd1;
+    // otherwise it holds the value (not written => no else branch needed)
+  end
 
 endmodule
 
