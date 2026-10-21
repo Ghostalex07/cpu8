@@ -13,6 +13,14 @@ addresses that fall at the start of *some* instruction of the program itself
 from __future__ import annotations
 
 import random
+import sys
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent.parent
+if str(_ROOT / "asm") not in sys.path:
+    sys.path.insert(0, str(_ROOT / "asm"))
+
+import assembler  # noqa: E402
 
 REGISTROS = ("A", "B", "C", "D")
 BASES_INDEXADO = ("B", "C", "D")  # A (rs=00) encodes absolute mode
@@ -39,43 +47,11 @@ _SIN_OPERANDO = ("EI", "DI", "RET", "HLT")
 
 
 def _longitud(linea: str) -> int:
-    """Bytes that the line will occupy (same rule as the assembler)."""
-    mnem = linea.split()[0].upper()
-    if mnem in ("LDW", "STW"):
-        return 3
-    if (
-        mnem
-        in (
-            "LDI",
-            "ADDI",
-            "SUBI",
-            "CMPI",
-            "LD",
-            "ST",
-            "JMP",
-            "CALL",
-            "MUL",
-            "DIV",
-            "NEG",
-            "NOT",
-            "ADC",
-            "SBC",
-            "SWAP",
-            "XCHG",
-            "ROL",
-            "ROR",
-            "TEST",
-            "PUSHF",
-            "POPF",
-            "ADCW",
-            "SUBW",
-        )
-        or mnem in _SALTOS
-    ):
-        return 2
-    if mnem in ("OUT", "IN"):
-        return 2 if "," in linea[3:] else 1
-    return 1
+    """Bytes that the line will occupy (delegates to the assembler's rule)."""
+    partes = linea.split(None, 1)
+    mnem = partes[0].upper()
+    operandos = [op.strip() for op in partes[1].split(",")] if len(partes) > 1 else []
+    return assembler.tamano_instruccion(mnem, operandos)
 
 
 def generar_fuente(rng: random.Random, n: int) -> str:
