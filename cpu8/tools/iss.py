@@ -18,6 +18,7 @@ Both share the same input convention as the testbenches:
 Usage::
 
     python3 tools/iss.py programs/countdown.hex --trace
+    python3 tools/iss.py programs/irq.hex --irq 0 --irq-vector 0x10
 """
 
 from __future__ import annotations
@@ -188,6 +189,8 @@ class ISS:
         self.halted = False
         self.rows: list[tuple] = []
         self.outs: list[tuple[int, int]] = []
+        self.irqs = 0
+        self.limit_reached = False
 
     # -- one instruction -----------------------------------------------------
     def step(self) -> tuple:
@@ -405,6 +408,7 @@ class ISS:
         self.flags_saved = (self.fc, self.fz, self.fn, self.fv)
         self.fi = 0
         self.PC = self.irq_vector
+        self.irqs += 1
 
     def run(self, max_steps: int = 5000) -> list[tuple]:
         """Runs until HLT or ``max_steps``; returns the trace rows.
@@ -416,6 +420,7 @@ class ISS:
         like the RTL's S_IRQ state).
         """
         self.rows = []
+        self.limit_reached = False
         guard = 0
         limite = 10 * max_steps + 1000
         while not self.halted and len(self.rows) < max_steps:
@@ -426,6 +431,7 @@ class ISS:
                 self.take_irq()
                 continue
             self.rows.append(self.step())
+        self.limit_reached = not self.halted and len(self.rows) >= max_steps
         return self.rows
 
     # -- output in the same format as tb/cpu_dump_tb.v -----------------------
@@ -455,22 +461,48 @@ def _leer_hex(path: Path) -> list[int]:
     return datos
 
 
+def _opcion_entera(
+    args: list[str], nombre: str, defecto: int | None
+) -> tuple[int | None, int | None]:
+    """Extracts ``--name VALUE`` from ``args``; returns ``(value, error)``.
+
+    ``error`` is the exit code when parsing fails (2), else None.  The option and
+    its value are removed from ``args``.
+    """
+    if nombre not in args:
+        return defecto, None
+    k = args.index(nombre)
+    if k + 1 >= len(args):
+        print(f"iss: {nombre} expects a number", file=sys.stderr)
+        return None, 2
+    try:
+        valor = int(args[k + 1], 0)
+    except ValueError:
+        print(f"iss: invalid {nombre} value '{args[k + 1]}'", file=sys.stderr)
+        return None, 2
+    del args[k : k + 2]
+    return valor, None
+
+
 def main(argv: list[str]) -> int:
     args = argv[1:]
     trace = "--trace" in args
     args = [a for a in args if a != "--trace"]
-    max_steps = 5000
-    if "--max" in args:
-        k = args.index("--max")
-        if k + 1 >= len(args):
-            print("iss: --max expects a number", file=sys.stderr)
-            return 2
-        try:
-            max_steps = int(args[k + 1])
-        except ValueError:
-            print(f"iss: invalid --max value '{args[k + 1]}'", file=sys.stderr)
-            return 2
-        del args[k : k + 2]
+    max_steps, err = _opcion_entera(args, "--max", 5000)
+    if err:
+        return err
+    irq_at, err = _opcion_entera(args, "--irq", None)
+    if err:
+        return err
+    irq_vector, err = _opcion_entera(args, "--irq-vector", 0x08)
+    if err:
+        return err
+    if not 0 <= irq_vector <= 0xFF:
+        print(f"iss: --irq-vector 0x{irq_vector:X} out of range 0x00..0xFF", file=sys.stderr)
+        return 2
+    if irq_at is not None and irq_at < 0:
+        print("iss: --irq expects a non-negative instruction count", file=sys.stderr)
+        return 2
     if not args:
         print(__doc__)
         return 2
@@ -482,8 +514,10 @@ def main(argv: list[str]) -> int:
     except ValueError as exc:
         print(f"iss: invalid hex file: {exc}", file=sys.stderr)
         return 2
-    iss = ISS(memoria)
+    iss = ISS(memoria, irq_vector=irq_vector, irq_at=irq_at)
     iss.run(max_steps)
+    if iss.limit_reached:
+        print(f"iss: (step limit reached) after {max_steps} instructions", file=sys.stderr)
     if trace:
         for line in iss.dump():
             print(line)

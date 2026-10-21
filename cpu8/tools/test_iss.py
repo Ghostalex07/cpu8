@@ -5,11 +5,11 @@ Two levels:
 
 1. **Directed micro-tests** of the exact semantics (ALU flags, V in INC/DEC, C
    in MUL/DIV, stack, indexing, Jcc families, ports).
-2. **Contrast with the golden values**: for each ``programs/*.asm`` (except
-   ``irq``, which needs the irq signal) the ISS is run and its OUT sequence is
-   compared with its ``programs/*.ref``.  Since those ``.ref`` are verified
-   against the RTL (``make test``), the fact that the ISS reproduces them proves
-   that the model is faithful.
+2. **Contrast with the golden values**: for each ``programs/*.asm`` (including
+   ``irq.asm``, which is run with the interrupt active at vector 0x10) the ISS is
+   run and its OUT sequence is compared with its ``programs/*.ref``.  Since those
+   ``.ref`` are verified against the RTL (``make test``), the fact that the ISS
+   reproduces them proves that the model is faithful.
 3. **Interrupt-enable flag I**: ``EI``/``DI``, the flags byte handled by
    ``PUSHF``/``POPF``, ``RETI`` restoring only ``C,Z,N,V``, and the gating of a
    level-high IRQ by ``I``.
@@ -443,14 +443,21 @@ def test_irq_a_nivel_alto_no_se_retoma_tras_reti() -> None:
 # ---------------------------------------------------------------------------
 
 # pmod.asm is an endless hardware demo (no .ref); top_pmod_tb covers it.
-PROGRAMAS = sorted(p for p in PROG_DIR.glob("*.asm") if p.stem not in {"irq", "pmod"})
+PROGRAMAS = sorted(p for p in PROG_DIR.glob("*.asm") if p.stem != "pmod")
 
 
 @pytest.mark.parametrize("asm_path", PROGRAMAS, ids=lambda p: p.stem)
 def test_iss_reproduce_los_ref(asm_path: Path) -> None:
     ref_path = asm_path.with_suffix(".ref")
     esperado = [int(t, 16) for t in ref_path.read_text().split()]
-    m = ejecutar(asm_path.read_text())
+    programa = ensambla_hexa(asm_path.read_text())
+    if asm_path.stem == "irq":
+        # Same level-high irq and vector as tb/irq_tb.v.
+        m = iss.ISS(programa, irq_at=0, irq_vector=0x10)
+        m.run()
+        assert m.irqs == 1
+    else:
+        m = ejecutar(asm_path.read_text())
     obtenido = [v for v, _ in m.outs]
     assert obtenido == esperado
 
@@ -474,3 +481,40 @@ def test_main_devuelve_dos_con_un_max_invalido(tmp_path, capsys) -> None:
     path.write_text("F0\n")
     assert iss.main(["iss.py", "--max", "x", str(path)]) == 2
     assert "invalid --max" in capsys.readouterr().err
+
+
+def test_main_acepta_irq_y_vector(tmp_path, capsys) -> None:
+    path = tmp_path / "irq.hex"
+    programa = ensambla_hexa("EI\nHLT\n.org 0x10\nHLT\n")
+    path.write_text("\n".join(f"{b:02X}" for b in programa) + "\n")
+    assert (
+        iss.main(
+            ["iss.py", "--trace", "--max", "20", "--irq", "0", "--irq-vector", "0x10", str(path)]
+        )
+        == 0
+    )
+    salida = capsys.readouterr().out
+    # The serviced interrupt jumps to 0x10 before the HLT is executed.
+    assert any(line.startswith("I 10 ") for line in salida.splitlines())
+
+
+def test_main_avisa_del_limite_de_pasos(tmp_path, capsys) -> None:
+    path = tmp_path / "loop.hex"
+    path.write_text("\n".join(f"{b:02X}" for b in ensambla_hexa("loop: JMP loop")) + "\n")
+    assert iss.main(["iss.py", "--max", "3", str(path)]) == 0
+    assert "step limit reached" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "args, mensaje",
+    [
+        (["--irq", "x"], "invalid --irq"),
+        (["--irq-vector", "0x100"], "out of range"),
+        (["--irq-vector", "x"], "invalid --irq-vector"),
+    ],
+)
+def test_main_valida_las_opciones_de_irq(tmp_path, capsys, args, mensaje) -> None:
+    path = tmp_path / "p.hex"
+    path.write_text("F0\n")
+    assert iss.main(["iss.py", *args, str(path)]) == 2
+    assert mensaje in capsys.readouterr().err
