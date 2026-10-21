@@ -5,9 +5,9 @@ It loads a program (``.asm`` or ``.hex``), runs it instruction by instruction on
 ``tools/iss.py`` and lets you control and inspect it like a small ``gdb``:
 breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly.
 
-It also reports the **cycle** count: it models the 5-state FSM of
+It also reports the **cycle** count: it models the 7-state FSM of
 ``rtl/control.v`` (FETCH + EXEC = 2 cycles for 1-byte instructions,
-FETCH + OPR + EXEC = 3 for 2-byte ones, and 1 cycle per interrupt serviced), so
+FETCH + OPR + EXEC = 3 for 2-byte ones, and 2 cycles per interrupt serviced), so
 it can be used to measure the CPI of a program.
 
 Usage::
@@ -52,6 +52,8 @@ _REG_ATTRS = {
     "IR": ("IR", None),
     "OP": ("operand", None),
 }
+# Case-insensitive watch names -> canonical spelling (registers and flags).
+_WATCH_NAMES = {k.upper(): k for k in (*_REG_ATTRS, *_FLAG_ATTRS)}
 # Instruction length in bytes (1/2/3), for the cycle model and hints.
 _LENGTH = iss_mod.instruction_length
 
@@ -320,8 +322,16 @@ class Debugger:
         self.watches = {t: self._read(t) for t in self.watches}
 
     # ---- low-level access -------------------------------------------------
-    def _read(self, target: str) -> int:
+    @staticmethod
+    def _norm_watch(target: str) -> str:
+        """Registers/flags are case-insensitive; memory cells keep their label."""
         t = target.strip()
+        if t.startswith("@"):
+            return t
+        return _WATCH_NAMES.get(t.upper(), t)
+
+    def _read(self, target: str) -> int:
+        t = self._norm_watch(target)
         if t.startswith("@"):
             return self.iss.mem[_addr(t[1:], self.labels)]
         if t in _FLAG_ATTRS:
@@ -357,7 +367,9 @@ class Debugger:
         if self.iss.irq_at is not None and self.iss.fi and self.retired >= self.iss.irq_at:
             self.iss.take_irq()
             self.irqs += 1
-            self.cycles += 1
+            # The RTL spends two states on an interrupt: the FETCH that detects
+            # it (and does not fetch) and S_IRQ, which pushes the return PC.
+            self.cycles += 2
             self._check_watches()
             return
         n = self._cycles()
@@ -386,7 +398,9 @@ class Debugger:
 
     # ---- execution primitives --------------------------------------------
     def step(self, n: int = 1) -> None:
-        for _ in range(max(1, n)):
+        if n < 1:
+            raise ValueError("count must be positive")
+        for _ in range(n):
             if self.iss.halted:
                 self.out("(the CPU is halted; use 'reset')")
                 break
@@ -395,7 +409,9 @@ class Debugger:
 
     def next(self, n: int = 1) -> None:
         """Steps one instruction, but *over* a ``CALL`` (it runs until it returns)."""
-        for _ in range(max(1, n)):
+        if n < 1:
+            raise ValueError("count must be positive")
+        for _ in range(n):
             if self.iss.halted:
                 self.out("(the CPU is halted; use 'reset')")
                 break
@@ -404,14 +420,14 @@ class Debugger:
                 ret = (self.iss.PC + 2) & 0xFF
                 self._step_one()
                 guard = 0
-                while (
-                    not self.iss.halted
-                    and self.iss.PC != ret
-                    and not self._breakpoint_hit(self.iss.PC)
-                    and guard < self.max_steps
-                ):
+                while not self.iss.halted and self.iss.PC != ret and guard < self.max_steps:
+                    if self._breakpoint_hit(self.iss.PC):
+                        self.hit_break = self.iss.PC
+                        break
                     self._step_one()
                     guard += 1
+                if guard >= self.max_steps and not self.iss.halted and self.iss.PC != ret:
+                    self.out(f"(next stopped at the step limit: {self.max_steps})")
             else:
                 self._step_one()
         self.out(self.state())
@@ -482,6 +498,8 @@ class Debugger:
 
     def cmd_disasm(self, addr: int | None = None, count: int = 8) -> None:
         i = self.iss.PC if addr is None else addr
+        if not 0 <= i <= 0xFF:
+            raise ValueError(f"address 0x{i:X} is outside the 256-byte memory")
         for _ in range(max(1, count)):
             if i > 0xFF:
                 break
@@ -541,6 +559,8 @@ class Debugger:
             else:
                 self._add_breakpoint(args)
         elif cmd in ("d", "delete"):
+            if not args:
+                raise ValueError("usage: delete <address|label>")
             a = _addr(args[0], self.labels)
             self.breakpoints.discard(a)
             self.conditions.pop(a, None)
@@ -559,9 +579,10 @@ class Debugger:
             else:
                 self._add_watch(args[0])
         elif cmd in ("unwatch",):
-            if args and args[0] in self.watches:
-                del self.watches[args[0]]
-                self.out(f"watch removed: {args[0]}")
+            objetivo = self._norm_watch(args[0]) if args else ""
+            if objetivo in self.watches:
+                del self.watches[objetivo]
+                self.out(f"watch removed: {objetivo}")
             else:
                 self.out(f"not watching '{args[0] if args else ''}'")
         elif cmd in ("regs", "info", "i"):
@@ -575,7 +596,7 @@ class Debugger:
                     raise ValueError("count must be positive")
                 self.cmd_mem(_addr(args[0], self.labels), cnt)
         elif cmd in ("l", "list", "disasm"):
-            addr = _to_int(args[0], self.labels) if args else None
+            addr = _addr(args[0], self.labels) if args else None
             cnt = _dec(args[1]) if len(args) > 1 else 8
             if cnt <= 0:
                 raise ValueError("count must be positive")
@@ -642,14 +663,15 @@ class Debugger:
             self.out(f"breakpoint at 0x{a:02X}{self._sym(a)}{cond}")
 
     def _add_watch(self, target: str) -> None:
-        if not self._valid_target(target):
+        clave = self._norm_watch(target)
+        if not self._valid_target(clave):
             self.out(
                 f"error: cannot watch '{target}' "
                 f"(registers A-D/SP/PC/IR/OP, flags fZ/fC/fN/fV/fI, or @address)"
             )
             return
-        self.watches[target] = self._read(target)
-        self.out(f"watching {target} (now 0x{self.watches[target]:02X})")
+        self.watches[clave] = self._read(clave)
+        self.out(f"watching {clave} (now 0x{self.watches[clave]:02X})")
 
     def _list_watches(self) -> None:
         if not self.watches:

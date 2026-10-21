@@ -333,6 +333,24 @@ def test_unwatch_and_unknown_target():
     assert any("cannot watch" in line for line in logs)
 
 
+def test_watch_and_unwatch_are_case_insensitive():
+    dbg, _ = build(COUNT)
+    dbg.handle("watch a")
+    dbg.handle("watch fz")
+    assert dbg.watches == {"A": 0, "fZ": 0}
+    dbg.handle("unwatch a")
+    assert set(dbg.watches) == {"fZ"}
+
+
+def test_disasm_and_delete_validate_their_arguments():
+    dbg, logs = build(COUNT)
+    dbg.handle("disasm 0x100")
+    dbg.handle("delete")
+    assert dbg.last_error
+    assert any("outside the 256-byte memory" in line for line in logs)
+    assert any("usage: delete" in line for line in logs)
+
+
 # ---- next steps over CALL --------------------------------------------------
 def test_next_steps_over_call():
     src = "LDI A, 1\nCALL sub\nOUT A\nHLT\nsub: ADD A, A\nRET\n"
@@ -344,6 +362,26 @@ def test_next_steps_over_call():
     assert dbg.iss.regs[0] == 2  # 1 + 1 inside `sub`
 
 
+def test_next_steps_over_nested_calls():
+    src = "LDI A, 1\nCALL one\nOUT A\nHLT\none: CALL two\nRET\ntwo: ADD A, A\nRET\n"
+    dbg, _ = build(src)
+    dbg.step()  # LDI
+    dbg.next()
+    assert dbg.iss.PC == 4
+    assert dbg.iss.regs[0] == 2
+
+
+def test_next_stops_at_a_breakpoint_inside_the_call_and_reports_it():
+    src = "LDI A, 1\nCALL sub\nOUT A\nHLT\nsub: ADD A, A\nRET\n"
+    dbg, _ = build(src)
+    dbg.step()  # LDI
+    dbg.handle("break sub")
+    dbg.next()
+    assert dbg.iss.PC == 6
+    assert dbg.hit_break == 6
+    assert dbg.iss.regs[0] == 1  # the CALL was executed, `sub` was not
+
+
 # ---- interrupts ------------------------------------------------------------
 def test_irq_counts_cycles_and_interrupts():
     dbg, _ = build("EI\nHLT\n", irq_at=1)
@@ -352,7 +390,7 @@ def test_irq_counts_cycles_and_interrupts():
     dbg.step()  # services the interrupt (no instruction retired)
     assert dbg.irqs == 1
     assert dbg.retired == 1
-    assert dbg.cycles == 3  # 2 (EI is 1 byte) + 1 (interrupt)
+    assert dbg.cycles == 4  # 2 (EI is 1 byte) + 2 (FETCH that detects irq + S_IRQ)
     assert dbg.iss.PC == 0x08  # jumped to the vector
 
 

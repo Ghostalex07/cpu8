@@ -69,7 +69,8 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 Cycle counts: **2** for 1-byte instructions (`FETCH + EXEC`), **3** for 2-byte ones
 (`FETCH + OPR + EXEC`) and **4** for the 3-byte `LDW`/`STW`
 (`FETCH + OPR + OPR2 + EXEC`) as well as for the pair operations `ADCW`/`SUBW`
-(`FETCH + OPR + EXEC + EXEC2`); an interrupt adds the `IRQ` cycle.
+(`FETCH + OPR + EXEC + EXEC2`); an interrupt costs **2** cycles: the `FETCH`
+that detects it (no instruction is fetched) plus `S_IRQ`.
 
 ## ALU
 
@@ -156,7 +157,8 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
   (`FETCH + EXEC` = 2 cycles for 1-byte instructions, `FETCH + OPR + EXEC` = 3 for
   2-byte ones, `FETCH + OPR + OPR2 + EXEC` = 4 for the 3-byte `LDW`/`STW`,
   `FETCH + OPR + EXEC + EXEC2` = 4 for the pair ops `ADCW`/`SUBW`, and
-  1 cycle per interrupt serviced), so it can be used to measure a program's CPI. Usage: `make debug PROG=programs/<name>` or
+  2 cycles per interrupt serviced: the `FETCH` that detects the request
+  without fetching, plus `S_IRQ`), so it can be used to measure a program's CPI. Usage: `make debug PROG=programs/<name>` or
   `python3 tools/debugger.py programs/<name>.asm`; its tests live in
   `tools/test_debugger.py` (`make pytools`).
 - **Regression harness** (`tools/regress.py`): checks that (1) assembly produces
