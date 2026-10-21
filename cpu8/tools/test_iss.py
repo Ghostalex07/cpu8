@@ -110,6 +110,81 @@ def test_add_si_toca_c() -> None:
     assert m.regs[0] == 0x00 and m.fc == 1 and m.fz == 1
 
 
+def test_sbc_resta_el_carry_y_marca_el_borrow() -> None:
+    # C is the no-borrow flag: SBC subtracts 1 when C=1 (no borrow) and 0 when
+    # C=0 (borrow), as documented in docs/ISA.md sections 5 and 10.10.
+    m = ejecutar("LDI A, 5\nLDI B, 3\nCMP A, A\nSBC A, B\nHLT")  # C=1
+    assert m.regs[0] == 1 and m.fc == 1
+
+    m = ejecutar("LDI A, 5\nLDI B, 3\nTEST A, A\nSBC A, B\nHLT")  # C=0
+    assert m.regs[0] == 2 and m.fc == 1
+
+    # 3 - 5 - 0 = 0xFE with borrow: C=0, N=1.
+    m = ejecutar("LDI A, 3\nLDI B, 5\nTEST A, A\nSBC A, B\nHLT")
+    assert m.regs[0] == 0xFE and m.fc == 0 and m.fn == 1
+
+
+def test_sbc_no_encadena_el_borrow_por_si_solo() -> None:
+    # Documented limitation (docs/ISA.md section 5): SBC subtracts the
+    # no-borrow flag, so chaining two SBCs does not propagate the borrow.
+    # This locks the current RTL/ISS behaviour; SUBW is the 16-bit form that
+    # does propagate it.
+    m = ejecutar("""
+        LDI A, 0x00
+        LDI B, 0x01
+        LDI C, 0x01
+        LDI D, 0x00
+        TEST A, A
+        SBC A, C
+        SBC B, D
+        HLT
+    """)  # 0x0100 - 0x0001 -> 0x01FF, not 0x00FF
+    assert (m.regs[0], m.regs[1]) == (0xFF, 0x01)
+
+
+def test_adcw_subw_encadenan_acarreo_y_borrow() -> None:
+    # Pair A:B has A as the low byte and B as the high byte.  0x00FF + 1 with
+    # C=1 gives 0x0100 (low byte carries into the high byte).
+    m = ejecutar("""
+        LDI A, 0xFF
+        LDI B, 0x00
+        LDI C, 0x00
+        LDI D, 0x00
+        CMP A, A
+        ADCW A, C
+        HLT
+    """)
+    assert (m.regs[0], m.regs[1]) == (0x00, 0x01)
+    assert (m.fc, m.fz, m.fn) == (0, 0, 0)
+
+    # 0x0100 - 0x0001 with C=0 (borrow in) gives 0x00FF: the low byte borrows
+    # and SUBW propagates it by inverting C for the high byte.
+    m = ejecutar("""
+        LDI A, 0x00
+        LDI B, 0x01
+        LDI C, 0x01
+        LDI D, 0x00
+        TEST A, A
+        SUBW A, C
+        HLT
+    """)
+    assert (m.regs[0], m.regs[1]) == (0xFF, 0x00)
+    assert (m.fc, m.fz, m.fn) == (1, 0, 0)  # the incoming borrow was consumed
+
+    # 16-bit zero: 0x0001 - 0x0001 = 0, so Z=1 (both bytes zero).
+    m = ejecutar("""
+        LDI A, 0x01
+        LDI B, 0x00
+        LDI C, 0x01
+        LDI D, 0x00
+        TEST A, A
+        SUBW A, C
+        HLT
+    """)
+    assert (m.regs[0], m.regs[1]) == (0x00, 0x00)
+    assert m.fz == 1
+
+
 def test_mul_div_flags_y_registro() -> None:
     m = ejecutar("LDI A, 20\nLDI B, 20\nMUL A, B\nHLT")
     assert m.regs[0] == 0x90 and m.fc == 1

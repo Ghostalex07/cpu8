@@ -141,7 +141,7 @@ The flags appearing in the *Flags* column are those that the instruction **modif
 | `NEG` | `0xFA 0x00` — `0xFA ; byte2 = (0x0<<4) + (rd<<2)` | 2 | rd | Z C N V | Negate rd: rd <- 0 - rd (Z, C, N, V). |
 | `NOT` | `0xFA 0x18` — `0xFA ; byte2 = (0x1<<4) + (rd<<2)` | 2 | rd | Z C N V | Bitwise NOT rd: rd <- ~rd (Z, N; C=0, V=0). |
 | `ADC` | `0xFA 0x21` — `0xFA ; byte2 = (0x2<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Add with carry: rd <- rd + rs + C (Z, C, N, V). |
-| `SBC` | `0xFA 0x36` — `0xFA ; byte2 = (0x3<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Subtract with borrow: rd <- rd - rs - C (Z, C, N, V). |
+| `SBC` | `0xFA 0x36` — `0xFA ; byte2 = (0x3<<4) + (rd<<2) + rs` | 2 | rd, rs | Z C N V | Subtract with the incoming C flag: rd <- rd - rs - C, where C is the no-borrow flag (Z, C, N, V).  It does not chain a borrow by itself; use SUBW for 16-bit differences. |
 | `SWAP` | `0xFA 0x42` — `0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs` | 2 | rd, rs | — | Exchange two registers: rd <-> rs (does not change flags). |
 | `XCHG` (alias of `SWAP`) | `0xFA 0x42` — `0xFA ; byte2 = (0x4<<4) + (rd<<2) + rs (alias of SWAP)` | 2 | rd, rs | — | Alias of SWAP: exchange two registers (rd <-> rs). |
 | `ROL` | `0xFA 0x5C` — `0xFA ; byte2 = (0x5<<4) + (rd<<2)` | 2 | rd | Z C N V | Rotate left through C: rd <- {rd[6:0], C}; C <- rd[7]. |

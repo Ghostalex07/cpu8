@@ -196,7 +196,14 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 - **NEG rd** (§10.10): `C = 1` if the operand was `0` (otherwise `0`); `V` = signed overflow (`rd = 0x80`).
 - **NOT rd** (§10.10): `C = 0`, `V = 0`.
 - **ADC rd,rs** (§10.10): like ADD but adds the carry in: `rd' = rd + rs + C`; `C = 1` if the sum ≥ 256.
-- **SBC rd,rs** (§10.10): like SUB but subtracts the borrow: `rd' = rd - rs - C`; `C = 0` if there was a borrow.
+- **SBC rd,rs** (§10.10): like SUB but with the incoming carry:
+  `rd' = rd - rs - C`; `C = 0` if there was a borrow. `C` is the storage
+  **no-borrow** flag, so the operation subtracts 1 when the previous
+  subtraction did **not** borrow and 0 when it did. It is therefore *not* the
+  6502 `rd - rs - (1 - C)` form: two chained `SBC`s do not propagate the
+  borrow by themselves. Use `SUBW` for 16-bit pairs (it inverts the low byte's
+  `C` for the high byte internally) or branch on `JC`/`JNC` and handle the
+  outgoing borrow explicitly.
 - **TEST rd,rs** (§10.10): the `AND` result is discarded: only `Z` and `N` are
   updated (`C=0`, `V=0`) and `rd` is not written.
 - **ADCW pr,ps** / **SUBW pr,ps** (§10.10): 16-bit versions of `ADC`/`SBC`
@@ -671,7 +678,10 @@ delivered to `C`, which lets a 16-bit pointer be walked one page at a time
 (`page ← page + carry`).
 
 `ADC`/`SBC` reuse the adder (they share one ALU operation, selected by the `sh`
-bit); likewise `ROL`/`ROR` share a rotate-through-carry unit.
+bit); likewise `ROL`/`ROR` share a rotate-through-carry unit. `SBC` subtracts
+its carry input directly (`rd - rs - C`, with `C` = no-borrow), so it does not
+propagate a borrow into a following byte on its own; `SUBW` does, by inverting
+the low byte's `C` before the high byte (see §5).
 
 `TEST` is the `AND` operation with its result discarded: the cheapest way to
 probe a value or to **clear `C` and `V`** without touching any register.

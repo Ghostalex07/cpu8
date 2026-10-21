@@ -777,7 +777,9 @@ INSTRUCCIONES: Final[tuple[Instruccion, ...]] = (
         byte2=0x36,
         regla="0xFA ; byte2 = (0x3<<4) + (rd<<2) + rs",
         banderas="Z C N V",
-        descripcion="Subtract with borrow: rd <- rd - rs - C (Z, C, N, V).",
+        descripcion="Subtract with the incoming C flag: rd <- rd - rs - C, where "
+        "C is the no-borrow flag (Z, C, N, V).  It does not chain a borrow by "
+        "itself; use SUBW for 16-bit differences.",
         muestra="SBC B, C",
         desensamblado="SBC B, C",
     ),
