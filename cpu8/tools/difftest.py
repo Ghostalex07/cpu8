@@ -141,6 +141,9 @@ def main() -> int:
 
     print("=== programs/*.asm ===")
     for p in sorted(PROG_DIR.glob("*.asm")):
+        # pmod.asm is an endless hardware demo; top_pmod_tb covers it.
+        if p.stem == "pmod":
+            continue
         src = p.read_text()
         try:
             b, _, _ = assembler.ensamblar(src)

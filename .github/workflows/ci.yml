@@ -211,6 +211,13 @@ jobs:
       - name: FPGA area and timing budget
         run: python3 tools/fpga_report.py build/fpga.log
 
+      # The golden hash pins the exact bitstream produced by the calibrated
+      # toolchain.  A mismatch means the RTL or the toolchain drifted, even if
+      # the design still fits and meets timing.
+      - name: Verify reproducible bitstream
+        working-directory: cpu8/build
+        run: sha256sum -c ../fpga/top.bin.sha256
+
       # The bitstream is the deliverable of this job: keep it for a month so it
       # can be flashed without re-running the (slow) toolchain.  A missing
       # bitstream means the synthesis silently produced nothing, hence the

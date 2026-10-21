@@ -1,6 +1,8 @@
 # CPU8 — Educational 8-bit CPU in Verilog
 
 [![CI](https://github.com/Ghostalex07/cpu8/actions/workflows/ci.yml/badge.svg)](https://github.com/Ghostalex07/cpu8/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/Ghostalex07/cpu8?display_name=tag)](https://github.com/Ghostalex07/cpu8/releases/latest)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 CPU8 is an **8-bit von Neumann CPU** written in synthesizable Verilog, designed as
 a **complete educational project**: not only the processor (RTL), but also its
@@ -68,6 +70,9 @@ make verilator   # C++ co-simulation of the whole processor
 make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
 make formal      # SymbiYosys proofs of the ALU and the FSM
 make fpga-check  # FPGA synthesis + area/timing budget
+make fpga-repro  # fpga-check + verify the committed bitstream SHA-256
+make release-assets  # build the release bitstreams and their checksums
+make fpga FPGA_PROG=pmod  # Pmod input demo bitstream (see docs/FPGA.md)
 make fmt-check   # check Verilog formatting with Verible 0.0.4071.0
 make fmt         # format the Verilog sources with Verible (opt-in)
 make difftest    # differential RTL-vs-model fuzzing (COUNT=150 in CI)
@@ -95,7 +100,9 @@ make debug PROG=programs/countdown  # interactive debugger: step/breakpoints/wat
 ├── CHANGELOG.md            # change history
 ├── LICENSE                 # MIT license
 ├── docs/
-│   └── ARCHITECTURE.md     # overview of the datapath and the FSM
+│   ├── ARCHITECTURE.md     # overview of the datapath and the FSM
+│   ├── FPGA.md             # iCEstick pinout, flashing and Pmod demo
+│   └── RELEASE.md          # release assets, hashes and checklist
 ├── programs/
 │   └── README.md           # description of the example programs
 └── cpu8/                   # the project (Makefile and everything else)
@@ -113,6 +120,8 @@ make debug PROG=programs/countdown  # interactive debugger: step/breakpoints/wat
     │   ├── cpu_dump_tb.v   # per-instruction dump (differential fuzzing)
     │   ├── cpu_trace_tb.v  # human-readable per-instruction trace
     │   ├── irq_tb.v        # interrupt test
+    │   ├── top_tb.v        # FPGA top-level IN/OUT/HLT test
+    │   ├── top_pmod_tb.v   # Pmod loop demo sweep
     │   ├── *_tb.v          # module testbenches
     │   └── verilator/      # C++ co-simulation
     ├── asm/
@@ -132,6 +141,9 @@ make debug PROG=programs/countdown  # interactive debugger: step/breakpoints/wat
     │   ├── ISA.md          # instruction set specification
     │   └── OPCODES.md      # opcode table (generated)
     └── fpga/               # iCEstick synthesis flow
+        ├── top.v           # board top level (POR, Pmod sync, LEDs)
+        ├── icestick.pcf    # pin constraints
+        └── top.bin.sha256  # golden hash of the released countdown bitstream
 ```
 
 ---
@@ -162,8 +174,8 @@ The ISA includes:
 
 The project relies on several layers of checking, all runnable locally:
 
-- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`, `cpu_directed`), with
-  exhaustive sweeps in the ALU.
+- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`, `cpu_directed`,
+  `top` and `top_pmod`), with exhaustive sweeps in the ALU.
 - **Example programs**: each `programs/*.asm` is assembled, simulated with
   `cpu_tb.v` and its `OUT` output is compared with `programs/*.ref`.
 - **Interrupts**: `irq_tb.v` checks IRQ handling; `RETI` restores the arithmetic
@@ -178,7 +190,9 @@ The project relies on several layers of checking, all runnable locally:
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under
   `build/verilator-cov/`. The target fails if line coverage drops below 95 %
-  (`tools/coverage_report.py`); the demo suite currently reaches 99.4 %.
+  (`tools/coverage_report.py`); the demo suite currently reaches 100 % (605/605
+  lines), with the two unreachable decoder defaults marked by justified
+  `coverage_off` pragmas.
 - **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
   bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
   job — fails if the design outgrows the area budget or misses the 12 MHz timing
@@ -186,9 +200,13 @@ The project relies on several layers of checking, all runnable locally:
   instead of the distro packages: nextpnr 0.6 places the design at 11.35 MHz and
   then aborts, so the area/timing budget would not be comparable. The iCEstick
   has no user switches: `IN` reads the eight data pins of the Pmod connector
-  (with internal pull-ups), so a Pmod cable or a jumper can exercise the input
-  port of `programs/inout.asm`; with nothing connected the pull-ups make it
-  read `0xFF`.
+  (with internal pull-ups). `programs/pmod.asm` is an endless `IN A; OUT A; JMP`
+  loop that shows the low five bits on the LEDs, so moving the Pmod inputs
+  between 3.3 V and GND changes the pattern in real time; with nothing connected
+  the pull-ups make it read `0xFF`. `tb/top_tb.v` checks the `IN`/`OUT`/`HLT`
+  path and `tb/top_pmod_tb.v` sweeps the loop demo over several input values.
+  See [`docs/FPGA.md`](docs/FPGA.md) for the pinout, the 3.3 V limit, the
+  flashing commands and the released bitstreams.
 - **Reference model (ISS)**: `tools/iss.py` implements the ISA in Python. The
   **differential fuzzing** (`make difftest`, `tools/difftest.py` +
   `tb/cpu_dump_tb.v`) runs each program on the RTL and on the ISS and compares the
@@ -217,17 +235,39 @@ All of it runs in **GitHub Actions** on every push and *pull request*
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): the `test` job runs
 the test suite (`make check`), `fmt` enforces the Verilog formatting, `formal`
 proves the ALU and the FSM with SymbiYosys, `fpga` synthesizes the design,
-enforces the area/timing budget and publishes the `fpga-bitstream` artifact
-(30 days), and `coverage` enforces the 95 % line-coverage floor and publishes
-the annotated report. A `difftest-long` job runs `make difftest-long
+enforces the area/timing budget, verifies the bitstream SHA-256 against the
+committed golden hash and publishes the `fpga-bitstream` artifact (30 days),
+and `coverage` enforces the 95 % line-coverage floor and publishes the
+annotated report. A `difftest-long` job runs `make difftest-long
 COUNT=10000` nightly at 03:00 UTC, or on manual dispatch when the `long` input
 is ticked; it never runs on push or pull request.
 
 Every action is pinned to a full commit SHA (with a `# vX.Y.Z` comment) and the
 Python tools are pinned in `.github/requirements-ci.txt`. Dependabot
 ([`.github/dependabot.yml`](.github/dependabot.yml)) opens weekly, grouped
-minor/patch PRs for the `github-actions` pins and for the pip requirements in
-`.github/`.
+minor/patch PRs for the `github-actions` pins and for `pytest`/`ruff`. The
+formatter, FPGA and formal pins are deliberately ignored: they are calibrated
+for reproducible formatting, timing and proofs, so they are bumped by hand with
+the corresponding checks.
+
+---
+
+## Releases
+
+The latest release ships two iCEstick bitstreams built from this tree:
+
+| Asset | Demo |
+|---|---|
+| `top.bin` | `countdown` (default demo) |
+| `top_pmod.bin` | Pmod input loop (`IN A; OUT A; JMP`) |
+
+Every asset has a matching `.sha256`, and `SHA256SUMS` covers both. The
+`fibonacci` and `euclid` programs remain simulation demos: they halt, and the
+top turns all LEDs on after `HLT`, so their final value would not be visible on
+the board. See
+[`docs/RELEASE.md`](docs/RELEASE.md) for the release checklist and the hash
+verification, and [`docs/FPGA.md`](docs/FPGA.md) for the Pmod wiring, the
+3.3 V limit and the flashing commands.
 
 ---
 

@@ -367,7 +367,8 @@ def test_irq_a_nivel_alto_no_se_retoma_tras_reti() -> None:
 #  Contrast with the golden values (programs/*.asm vs programs/*.ref)
 # ---------------------------------------------------------------------------
 
-PROGRAMAS = sorted(p for p in PROG_DIR.glob("*.asm") if p.stem != "irq")
+# pmod.asm is an endless hardware demo (no .ref); top_pmod_tb covers it.
+PROGRAMAS = sorted(p for p in PROG_DIR.glob("*.asm") if p.stem not in {"irq", "pmod"})
 
 
 @pytest.mark.parametrize("asm_path", PROGRAMAS, ids=lambda p: p.stem)

@@ -1,10 +1,46 @@
 # Changelog
 
 The format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Changes are grouped under *Unreleased* until a tag is cut; `v1.0.0` is the
-first numbered release.
+Changes are grouped under *Unreleased* until a tag is cut.
 
 ## [Unreleased]
+
+## [1.0.1] - 2026-10-21
+
+### Added
+
+- **Pmod hardware demo** (`programs/pmod.asm`): endless `IN A; OUT A; JMP` loop
+  that shows the low five bits of the Pmod byte on the iCEstick LEDs. It is
+  excluded from the halt-based program regression, differential fuzzing and
+  golden traces; `tb/top_pmod_tb.v` loads its image and sweeps `0x00`, `0xFF`,
+  `0x55`, `0xAA`, every single-bit value, `0xA5` and `0x5A`.
+- **`make fpga-repro`** and `fpga/top.bin.sha256`: rebuild the default bitstream
+  and verify its SHA-256 against a committed golden hash. The CI `fpga` job runs
+  the same check after the area/timing report, so RTL or toolchain drift is
+  caught even when the design still fits.
+- **`make release-assets`**: build the two published bitstreams (`countdown`
+  and `pmod`), write one `.sha256` per asset and a combined `SHA256SUMS` file.
+  The default `build/top.bin` is the countdown demo. The halting `fibonacci`
+  and `euclid` programs stay simulation-only: the top turns all LEDs on after
+  `HLT`, so their final value would not be visible on the board.
+- **`docs/FPGA.md` and `docs/RELEASE.md`**: iCEstick pinout, 3.3 V warning,
+  flashing commands, Pmod demo behavior, release asset list, checksum
+  verification and the release checklist. The README gains release/license
+  badges and a Releases section.
+- **Extra release asset**: `top_pmod.bin` joins `top.bin`, each with a checksum.
+
+### Changed
+
+- **Dependabot** now ignores the calibrated `verible`, `yowasp-yosys`,
+  `yowasp-nextpnr-ice40` and `z3-solver` pins; only `pytest` and `ruff` update
+  automatically. The FPGA/formal/formatting pins are bumped by hand after the
+  corresponding checks, so an automatic Yosys bump cannot silently change the
+  bitstream or the proofs.
+- **README**: the Pmod instructions now point at `programs/pmod.asm` instead of
+  the testbench-oriented `inout.asm`, coverage is documented as 100 % (605/605)
+  and the new FPGA/release commands and documents are linked.
+
+## [1.0.0] - 2026-10-20
 
 ### Added
 

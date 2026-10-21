@@ -44,10 +44,14 @@ TRACES = GOLDEN / "traces"
 # irq.asm needs the irq signal (covered by `make irqtest`); with irq=0 its trace
 # adds nothing, so it is excluded from the trace check (not from the bytes one).
 TRACE_EXCLUIDOS = {"irq"}
+# pmod.asm loops forever (hardware demo); it is covered by top_pmod_tb and must
+# not enter the halt-based trace/bytes regression.
+PROGRAMAS_EXCLUIDOS = {"pmod"}
 
 
 def _programas() -> list[Path]:
-    return sorted((RAIZ / "programs").glob("*.asm"))
+    programas = sorted((RAIZ / "programs").glob("*.asm"))
+    return [p for p in programas if p.stem not in PROGRAMAS_EXCLUIDOS]
 
 
 def _sha(bs: list[int]) -> str:

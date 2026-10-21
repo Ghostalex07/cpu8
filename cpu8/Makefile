@@ -70,7 +70,9 @@ MOD_TB   = $(filter-out $(CPU_TB) $(IRQ_TB) $(TRACE_TB) $(DUMP_TB),$(TB_SRCS))
 
 # Demo programs: each programs/<name>.asm with its programs/<name>.ref.
 # irq.asm is excluded: it needs the irq signal, which only irq_tb handles (irqtest).
-PROGS    = $(filter-out $(PROG_DIR)/irq.asm,$(wildcard $(PROG_DIR)/*.asm))
+# pmod.asm is excluded: it never halts (it is a hardware demo), so it is tested
+# by top_pmod_tb instead of the halt-based program regression.
+PROGS    = $(filter-out $(PROG_DIR)/irq.asm $(PROG_DIR)/pmod.asm,$(wildcard $(PROG_DIR)/*.asm))
 
 # Default program for sim/wave (without the .asm extension)
 PROG ?= $(PROG_DIR)/countdown
@@ -90,9 +92,13 @@ dirs:
 ## --- Full suite: module tests + program tests + interrupts ---
 test: modtests progtests irqtest
 
+## --- Assemble the infinite-loop Pmod demo (used by top_pmod_tb and the FPGA) ---
+pmodhex: dirs
+	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/pmod.asm
+
 ## --- Individual module tests (ALU, RAM, PC, registers) ---
 ## Each testbench is compiled together with ALL the RTL and run.
-modtests: dirs
+modtests: dirs pmodhex
 	@if [ -z "$(MOD_TB)" ]; then \
 	  echo "There are no module testbenches in $(TB_DIR)/ yet."; \
 	else \
@@ -327,6 +333,29 @@ fpga-check: dirs
 	  || { tail -n 40 $(BUILD)/fpga.log; exit 1; }
 	@$(PYTHON) $(TOOLS_DIR)/fpga_report.py $(BUILD)/fpga.log
 
+## Rebuild the default (countdown) bitstream and verify its committed SHA-256.
+## The golden hash also guards the CI fpga job against toolchain drift.
+fpga-repro: fpga-check
+	@cd $(BUILD) && sha256sum -c ../$(FPGA_DIR)/top.bin.sha256
+
+## Build the bitstreams published in a release, plus one .sha256 per asset and
+## a combined SHA256SUMS file.  Only demos that stay visible on the board are
+## shipped: countdown (runs once, then HLT lights all LEDs) and pmod (endless
+## loop).  fibonacci/euclid halt, so the top would hide their result behind the
+## all-LEDs-on HLT indicator; they remain simulation-only programs.
+## countdown is built last so build/top.bin is the default demo and matches
+## fpga/top.bin.sha256.
+release-assets: dirs
+	@set -e; \
+	for p in pmod countdown; do \
+	  echo "=== release asset: $$p ==="; \
+	  $(MAKE) --no-print-directory fpga FPGA_PROG=$$p > $(BUILD)/fpga-$$p.log 2>&1; \
+	  if [ "$$p" = "countdown" ]; then out=top.bin; else out=top_$$p.bin; cp $(BUILD)/top.bin $(BUILD)/$$out; fi; \
+	  (cd $(BUILD) && sha256sum $$out > $$out.sha256); \
+	done; \
+	(cd $(BUILD) && sha256sum top.bin top_pmod.bin > SHA256SUMS); \
+	ls -l $(BUILD)/top*.bin $(BUILD)/*.sha256 $(BUILD)/SHA256SUMS
+
 ## --- Formal verification (SymbiYosys): bounded proofs with z3 ---
 ##   make formal
 ## Each formal/*.sby runs in its own work directory; `-f` overwrites it.
@@ -343,9 +372,9 @@ formal: dirs
 clean:
 	rm -rf $(BUILD) $(FORMAL_DIR)/*/ $(FPGA_DIR)/program.hex
 
-.PHONY: all dirs test modtests progtests irqtest asm sim wave trace disasm debug \
+.PHONY: all dirs test modtests pmodhex progtests irqtest asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest difftest-long regress regress-update verilator \
-	coverage vlint fmt fmt-check fpga fpga-check formal clean help check
+	coverage vlint fmt fmt-check fpga fpga-check fpga-repro release-assets formal clean help check
 
 ## --- Full local battery: the same as CI runs ---
 check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
@@ -359,6 +388,8 @@ help:
 	@echo "make fmt-check                     (report the Verilog files Verible would change)"
 	@echo "make fpga FPGA_PROG=<name>         (synthesizes a bitstream for iCEstick)"
 	@echo "make fpga-check FPGA_PROG=<name>   (fpga + area/timing budget check)"
+	@echo "make fpga-repro                    (fpga-check + committed bitstream SHA-256)"
+	@echo "make release-assets                (build top.bin/top_pmod.bin + checksums)"
 	@echo "make formal                        (SymbiYosys proofs of the ALU and the FSM)"
 	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"
 	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"

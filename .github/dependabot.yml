@@ -5,7 +5,9 @@
 #     Dependabot is the mechanism that keeps those pins current.  It rewrites
 #     the SHA and the trailing `# vX.Y.Z` comment.
 #   * pip: the CI dependency files live in /.github (requirements-ci.txt,
-#     requirements-formal.txt, requirements-fpga.txt).
+#     requirements-formal.txt, requirements-fpga.txt).  The formatter, FPGA
+#     and formal pins are calibrated for reproducible output, so they are
+#     ignored below and bumped by hand with the corresponding checks.
 #
 # Minor and patch bumps are grouped into a single PR per ecosystem to keep the
 # noise down; major bumps arrive as individual PRs and are reviewed by hand.
@@ -29,6 +31,16 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # verible formats the Verilog sources: a new version needs `make fmt`
+      # and a full fmt-check review.
+      - dependency-name: "verible"
+      # The FPGA area/timing and the exact bitstream are calibrated against
+      # these wheels; bump them only after `make fpga-check` and `make fpga-repro`.
+      - dependency-name: "yowasp-yosys"
+      - dependency-name: "yowasp-nextpnr-ice40"
+      # The formal proofs are part of the verification baseline.
+      - dependency-name: "z3-solver"
     groups:
       python-dependencies:
         patterns:

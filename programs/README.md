@@ -1,6 +1,6 @@
 # Example programs
 
-Each `.asm` program is assembled to `.hex` and simulated with `cpu_tb.v`. If a `.ref` file exists, the testbench compares the whole sequence of bytes written to `OUT`, in order, with the contents of that file, and also checks that the number of outputs is the expected one.
+Each `.asm` program is assembled to `.hex` and simulated with `cpu_tb.v`, except `pmod.asm` (an endless hardware demo tested by `tb/top_pmod_tb.v`). If a `.ref` file exists, the testbench compares the whole sequence of bytes written to `OUT`, in order, with the contents of that file, and also checks that the number of outputs is the expected one.
 
 ## How to run a program
 
@@ -28,6 +28,7 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `multiply.asm` | Multiplication by repeated addition | Algorithm with loops and an accumulator. |
 | `muldiv.asm` | Hardware `MUL`/`DIV` (Phase 9) | Multiplication, overflow (`C=1`), division and division by zero (`C=1`). |
 | `inout.asm` | `IN` input and port output `OUT n, rd` (Phase 9) | Reads the input port and writes to ports 0/1/2. |
+| `pmod.asm` | iCEstick Pmod input demo | Endless `IN A; OUT A; JMP` loop: the low five bits of the Pmod byte appear on the LEDs. It never halts, so it is excluded from the halt-based harness and tested by `tb/top_pmod_tb.v`; `make fpga FPGA_PROG=pmod` builds its bitstream. |
 | `euclid.asm` | Greatest common divisor (Euclid's algorithm) | GCD of (144,60) as the remainder `a − (a/b)·b` using hardware `DIV`/`MUL`. |
 | `factorial.asm` | Iterative factorial (5! = 120) | Loop with `MUL` and `DEC`; stops when `B` reaches 0. |
 | `primes.asm` | Primes below 32 (trial division) | Nested loops + RAM cells; uses `DIV`/`MUL` for the remainder. |
@@ -52,6 +53,10 @@ done
 ## Notes
 
 - `cpu_tb.v` stops the simulation when it reaches `HLT` or after a reasonable number of cycles.
+- `pmod.asm` is the exception: it loops forever on purpose, so `cpu_tb.v`, the
+  program regression and the differential fuzzer skip it. `tb/top_pmod_tb.v`
+  loads its `.hex` and checks several Pmod values against the top-level LEDs.
 - Every byte written to `OUT` during the simulation is compared, in order, with its line in `.ref` (one byte per line); the testbench also fails if the number of outputs differs, so a missing or an extra byte is an error.
 
-Everything added without modifying the RTL, the existing testbenches or the `Makefile`.
+A normal example only needs its `.asm` (and `.ref`); the endless `pmod.asm` demo
+is the exception and is wired into the module test and FPGA targets.
