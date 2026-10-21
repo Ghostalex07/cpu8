@@ -25,6 +25,7 @@ module top_pmod_tb;
 
   integer errors = 0;
   integer k;
+  reg [1023:0] hexfile;
 
   task check_input;
     input [7:0] value;
@@ -54,7 +55,8 @@ module top_pmod_tb;
     // Deterministic RAM, then the assembled loop program (4 bytes:
     // E1 E0 C0 00 = IN A / OUT A / JMP 0).
     for (k = 0; k < 256; k = k + 1) dut.cpu_i.u_ram.mem[k] = 8'h00;
-    $readmemh("programs/pmod.hex", dut.cpu_i.u_ram.mem, 0, 3);
+    if (!$value$plusargs("hex=%s", hexfile)) hexfile = "programs/pmod.hex";
+    $readmemh(hexfile, dut.cpu_i.u_ram.mem, 0, 3);
 
     // Wait for the top-level power-on reset, then let the loop settle.
     wait (dut.rst == 1'b0);

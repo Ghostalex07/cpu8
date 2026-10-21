@@ -20,12 +20,13 @@
 //
 //  Prefixed instructions (Phase 12, docs/ISA.md §10): byte1 = 0xFA selects an
 //  extended opcode carried in byte2 (`xop`, registered in cpu.v = NEG, NOT,
-//  ADC, SBC, SWAP, ROL, ROR, LDW, STW).  Only LDW/STW read a third byte
+//  ADC, SBC, SWAP, ROL, ROR, TEST, PUSHF, POPF, ADCW, SUBW, RETI, LDW, STW).
+//  Only LDW/STW read a third byte
 //  (operand) in S_OPR2; the rest are 2 bytes.
 //
 //  Interrupts: if flag I (enabled by EI=0xF2) is 1 and the irq input is 1 at
 //  the beginning of an instruction, it is serviced in S_IRQ: the return PC is
-//  pushed, I is cleared and it jumps to IRQ_VECTOR.  The handler ends with RET.
+//  pushed, I is cleared and it jumps to IRQ_VECTOR.  The handler ends with RETI.
 //  The PC is pushed on the stack; C,Z,N,V are saved in a shadow register.
 //
 //  Opcode group 0x0 (1 byte): suboperation in rd[3:2], register in rs[1:0]:

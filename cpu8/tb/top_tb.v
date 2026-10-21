@@ -30,10 +30,24 @@ module top_tb;
     dut.cpu_i.u_ram.mem[1] = 8'hE0;  // OUT A
     dut.cpu_i.u_ram.mem[2] = 8'hF0;  // HLT
 
-    // The top-level POR releases rst after 8 cycles; then IN (3), OUT (2)
-    // and HLT (1) need a handful of cycles.
-    wait (dut.rst == 1'b0);
+    // The top-level POR must hold reset for the first 8 cycles and keep the
+    // LEDs off; then IN (3), OUT (2) and HLT (1) need a handful of cycles.
     repeat (4) @(posedge clk);
+    #1;
+    if (dut.rst !== 1'b1) begin
+      $display("  FAIL: rst released too early");
+      errors = errors + 1;
+    end
+    if (led !== 5'b00000) begin
+      $display("  FAIL: LED=%02X during reset, expected off", led);
+      errors = errors + 1;
+    end
+    repeat (4) @(posedge clk);
+    #1;
+    if (dut.rst !== 1'b0) begin
+      $display("  FAIL: rst still high after 8 cycles");
+      errors = errors + 1;
+    end
     repeat (40) @(posedge clk);
 
     if (!dut.halted) begin

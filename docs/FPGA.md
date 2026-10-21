@@ -127,7 +127,7 @@ iceprog build/top.bin          # write the bitstream to the SPI flash
 iceprog -t                     # optional: verify the flash contents
 ```
 
-Power-cycle the board (or press its reset button, if your revision has one)
+Power-cycle the board after programming; the iCEstick has no user reset button
 after programming. If `iceprog` reports a permission error, install the
 IceStorm udev rules or run it with `sudo`; do not run arbitrary downloads as
 root.
@@ -136,7 +136,7 @@ root.
 
 | Bitstream | Program | What you see |
 |---|---|---|
-| `top.bin` | `countdown.asm` | counts 9…0 on the LEDs once; after `HLT` all five turn on. Reset to repeat. |
+| `top.bin` | `countdown.asm` | counts 9…0 on the LEDs once; after `HLT` all five turn on. Power-cycle to repeat. |
 | `top_pmod.bin` | `pmod.asm` | endless `IN A; OUT A; JMP` loop: the low five bits of the Pmod byte follow the inputs in real time. Open inputs read `0xFF` (all LEDs on); grounding a pin clears its bit. |
 
 `fibonacci.asm` and `euclid.asm` are **simulation demos**, not bitstreams:

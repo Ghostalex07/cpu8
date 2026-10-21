@@ -108,7 +108,7 @@ modtests: dirs pmodhex
 	    echo "=== $$name ==="; \
 	    $(IVERILOG) $(IVFLAGS) -s $$name -o $(BUILD)/$$name.vvp $$tb \
 	      $(RTL_DIR)/*.v $(FPGA_DIR)/top.v; \
-	    $(VVP) $(BUILD)/$$name.vvp; \
+	    $(VVP) $(BUILD)/$$name.vvp +hex=$(PROG_DIR)/pmod.hex; \
 	    echo ""; \
 	  done; \
 	fi
@@ -287,6 +287,18 @@ coverage: dirs $(COV_DIR)/Vcpu_sim
 vlint:
 	$(VERILATOR) --lint-only -Wall --top-module cpu $(RTL_DIR)/*.v
 
+## Lint the FPGA top level as well.  The CPU's out_port is intentionally left
+## unconnected (the board only has LEDs), out_valid/in_port are unused by the
+## board, and the initial values of por/in_meta/in_sync are the iCE40 power-on
+## state; disable only those three warnings for this target.  PROCASSINIT does
+## not exist in older Verilator releases (the Ubuntu 24.04 package is 5.020),
+## where -Wno-<unknown> is a hard error, so probe it before using it.
+VLINT_TOP_PROCASSINIT = $(shell $(VERILATOR) -Wno-PROCASSINIT --version >/dev/null 2>&1 && echo -Wno-PROCASSINIT)
+vlint-top:
+	$(VERILATOR) --lint-only -Wall \
+	  -Wno-PINMISSING -Wno-UNUSEDSIGNAL $(VLINT_TOP_PROCASSINIT) \
+	  --top-module top $(RTL_DIR)/*.v $(FPGA_DIR)/top.v
+
 ## --- Verilog formatting (Phase 12e, opt-in) ---
 ## `make fmt` rewrites the sources in place with Verible; `make fmt-check`
 ## reports the files that would change (exit status 1).  The sources are
@@ -333,10 +345,19 @@ fpga-check: dirs
 	  || { tail -n 40 $(BUILD)/fpga.log; exit 1; }
 	@$(PYTHON) $(TOOLS_DIR)/fpga_report.py $(BUILD)/fpga.log
 
-## Rebuild the default (countdown) bitstream and verify its committed SHA-256.
-## The golden hash also guards the CI fpga job against toolchain drift.
-fpga-repro: fpga-check
-	@cd $(BUILD) && sha256sum -c ../$(FPGA_DIR)/top.bin.sha256
+## Rebuild one of the published bitstreams and verify its committed SHA-256.
+## Only the two release demos have a golden hash; anything else is rejected so
+## a typo cannot silently compare the wrong bitstream against top.bin.sha256.
+fpga-repro:
+	@case "$(FPGA_PROG)" in \
+	  ""|countdown) prog=countdown; golden=top.bin.sha256; out=top.bin ;; \
+	  pmod) prog=pmod; golden=top_pmod.bin.sha256; out=top_pmod.bin ;; \
+	  *) echo "fpga-repro: no golden hash for FPGA_PROG=$(FPGA_PROG)"; \
+	     echo "            available: countdown (default), pmod"; exit 2 ;; \
+	esac; \
+	$(MAKE) --no-print-directory fpga-check FPGA_PROG=$$prog && \
+	if [ "$$out" != "top.bin" ]; then cp $(BUILD)/top.bin $(BUILD)/$$out; fi; \
+	cd $(BUILD) && sha256sum -c ../$(FPGA_DIR)/$$golden
 
 ## Build the bitstreams published in a release, plus one .sha256 per asset and
 ## a combined SHA256SUMS file.  Only demos that stay visible on the board are
@@ -350,10 +371,13 @@ release-assets: dirs
 	for p in pmod countdown; do \
 	  echo "=== release asset: $$p ==="; \
 	  $(MAKE) --no-print-directory fpga FPGA_PROG=$$p > $(BUILD)/fpga-$$p.log 2>&1; \
+	  $(PYTHON) $(TOOLS_DIR)/fpga_report.py $(BUILD)/fpga-$$p.log; \
 	  if [ "$$p" = "countdown" ]; then out=top.bin; else out=top_$$p.bin; cp $(BUILD)/top.bin $(BUILD)/$$out; fi; \
 	  (cd $(BUILD) && sha256sum $$out > $$out.sha256); \
 	done; \
 	(cd $(BUILD) && sha256sum top.bin top_pmod.bin > SHA256SUMS); \
+	(cd $(BUILD) && sha256sum -c ../$(FPGA_DIR)/top.bin.sha256 && \
+	 sha256sum -c ../$(FPGA_DIR)/top_pmod.bin.sha256); \
 	ls -l $(BUILD)/top*.bin $(BUILD)/*.sha256 $(BUILD)/SHA256SUMS
 
 ## --- Formal verification (SymbiYosys): bounded proofs with z3 ---
@@ -374,10 +398,12 @@ clean:
 
 .PHONY: all dirs test modtests pmodhex progtests irqtest asm sim wave trace disasm debug \
 	pytools lint docs docs-check difftest difftest-long regress regress-update verilator \
-	coverage vlint fmt fmt-check fpga fpga-check fpga-repro release-assets formal clean help check
+	coverage vlint vlint-top fmt fmt-check fpga fpga-check fpga-repro release-assets formal clean help check
 
 ## --- Full local battery: the same as CI runs ---
-check: vlint modtests progtests irqtest verilator pytools difftest regress docs-check lint
+check: COUNT = 150
+check: SEED = 1
+check: vlint vlint-top modtests progtests irqtest verilator pytools difftest regress docs-check lint
 
 help:
 	@echo "make test                          (modules + demo programs + irq)"

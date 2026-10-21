@@ -47,8 +47,8 @@ can run entirely **without hardware**, using `iverilog` and/or `verilator`.
 ## Quick start
 
 **Requirements**: `iverilog` + `vvp`, `python3` (≥ 3.10), `pytest` and `ruff`.
-The versions CI uses are pinned in [`.github/requirements-ci.txt`](.github/requirements-ci.txt)
-(`pytest==9.0.2`, `ruff==0.16.1`, `verible==0.0.4071.0`); install them with
+The versions CI uses are pinned in [`.github/requirements-ci.txt`](.github/requirements-ci.txt);
+install them with
 `python3 -m pip install -r ../.github/requirements-ci.txt` from `cpu8/`.
 Optional: `verilator` (co-simulation) and the FPGA tools (FPGA synthesis). The
 FPGA flow looks for `yosys`, `nextpnr-ice40` and `icepack` on the `PATH` and
@@ -137,6 +137,7 @@ make debug PROG=programs/countdown  # interactive debugger: step/breakpoints/wat
     │   ├── fuzz.py         # random program generator
     │   ├── gen_docs.py     # generates docs/OPCODES.md from isa_table.py
     │   └── golden/         # golden references (bytes and traces)
+    ├── formal/            # SymbiYosys properties and scripts
     ├── docs/
     │   ├── ISA.md          # instruction set specification
     │   └── OPCODES.md      # opcode table (generated)
@@ -154,14 +155,14 @@ The ISA includes:
 
 | Family | Instructions |
 |---|---|
-| Data | `LDI`, `MOV`, `LD`, `ST` (absolute / indexed / indirect) |
+| Data | `LDI`, `MOV`, `LD`, `ST` (absolute / indexed / indirect), `NOP` |
 | Arithmetic | `ADD`, `ADDI`, `SUB`, `SUBI`, `CMP`, `CMPI`, `INC`, `DEC`, `MUL`, `DIV`, `ADC`, `SBC`, `ADCW`, `SUBW`, `NEG` |
 | Logic | `AND`, `OR`, `XOR`, `NOT`, `TEST` |
 | Shift/rotate | `SHL`, `SHR`, `ROL`, `ROR` |
 | Data (16-bit indexed) | `LDW`, `STW` |
 | Stack and register moves | `PUSH`, `POP`, `PUSHF`/`POPF`, `SWAP`/`XCHG`, `JMP`, `CALL`, `RET`, `HLT` |
 | Conditional branches | `JZ`/`JNZ`, `JC`/`JNC`, `JLT`/`JGE`/`JLE`/`JGT`, `JVS`/`JVC`/`JMI`/`JPL` |
-| System and I/O | `EI`, `DI`, `IN`, `OUT` (register and port `IN n,rd` / `OUT n,rd`) |
+| System and I/O | `EI`, `DI`, `RETI`, `IN`, `OUT` (register and port `IN n,rd` / `OUT n,rd`) |
 
 - Full, instruction-by-instruction specification: **[`cpu8/docs/ISA.md`](cpu8/docs/ISA.md)**.
 - Opcode table (with *bytes*, operands and flags): **[`cpu8/docs/OPCODES.md`](cpu8/docs/OPCODES.md)**,
@@ -174,8 +175,8 @@ The ISA includes:
 
 The project relies on several layers of checking, all runnable locally:
 
-- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`, `cpu_directed`,
-  `top` and `top_pmod`), with exhaustive sweeps in the ALU.
+- **Module testbenches** (`alu`, `pc`, `ram`, `regfile`, `flag_i`,
+  `cpu_directed`, `top` and `top_pmod`), with exhaustive sweeps in the ALU.
 - **Example programs**: each `programs/*.asm` is assembled, simulated with
   `cpu_tb.v` and its `OUT` output is compared with `programs/*.ref`.
 - **Interrupts**: `irq_tb.v` checks IRQ handling; `RETI` restores the arithmetic

@@ -4,6 +4,9 @@
 
 CPU8 is an educational **8-bit** CPU with a **von Neumann** architecture (unified memory for code and data). 8-bit address and data buses → **256 bytes** of addressable RAM.
 
+Paths such as `rtl/...`, `docs/...` and `fpga/...` are relative to `cpu8/`;
+this document lives at the repository root.
+
 - **Instruction words**: variable (1, 2 or 3 bytes)
 - **Registers**: A, B, C, D (GPR), PC, SP, IR, operand, flags (Z, C, N, V), register I (IRQ)
 - **ALU**: combinational, with ADD/SUB/AND/OR/XOR/CMP/SHL/SHR operations, the immediate variants ADDI/SUBI/CMPI and MUL/DIV
@@ -111,12 +114,12 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 - **Pass 1**: collects labels/symbols
 - **Pass 2**: generates bytes with the encoding from `docs/ISA.md`
 - Supports mnemonics, immediates (`LDI`/`ADDI`/`SUBI`/`CMPI`), registers, direct addressing `[a]`, register-indirect `[r]`, **indexed** `[r+off]` (and the 16-bit `LDW`/`STW`), labels, `;` comments, unsigned branches and signed `Jcc` (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
-- Handles the prefixed (`0xFA`) extended instructions, emitting 2 bytes (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`) or 3 (`LDW`/`STW`)
+- Handles the prefixed (`0xFA`) extended instructions, emitting 2 bytes (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`, `RETI`) or 3 (`LDW`/`STW`)
 - Generates `.hex` with hexadecimal bytes (one instruction per line or sequence)
 
 ## Verification
 
-- **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v` (includes exhaustive sweeps in the ALU)
+- **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v`, `flag_i_tb.v`, `cpu_directed_tb.v`, `top_tb.v`, `top_pmod_tb.v` (includes exhaustive sweeps in the ALU)
 - **Programs**: each `programs/*.asm` is assembled, simulated with `cpu_tb.v` and its `OUT` is compared with `programs/*.ref`
 - **IRQ**: `irq_tb.v` verifies correct handling and `RETI` (which restores the
   `C,Z,N,V` flags saved when the interrupt was taken)

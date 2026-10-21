@@ -21,10 +21,9 @@ cd cpu8
 python3 -m pip install -r ../.github/requirements-ci.txt
 ```
 
-That file pins `pytest==9.0.2`, `ruff==0.16.1` and `verible==0.0.4071.0`, the
-same versions CI uses. Keep the Verible version in sync with the formatter that
-produced the sources: `make fmt-check` passes with 0.0.4071.0 (and may report
-false diffs with other releases).
+That file pins every tool CI uses, so the versions are not repeated here. Keep
+the Verible formatter in sync with the sources: `make fmt-check` passes with the
+pinned release and may report false diffs with another one.
 
 The `Makefile` is in `cpu8/`; run the commands from that folder.
 
@@ -114,8 +113,9 @@ make regress-update
 
 ## Adding or changing instructions
 
-The **single source of truth for the ISA** is `cpu8/asm/isa_table.py`. If you
-touch the instruction set:
+The **machine-readable source of truth for encodings and flag effects** is
+`cpu8/asm/isa_table.py`; `cpu8/docs/ISA.md` is the normative prose for
+semantics. If you touch the instruction set:
 
 1. Update the RTL (`rtl/alu.v`, `rtl/control.v`, `rtl/cpu.v`).
 2. Update the assembler (`asm/assembler.py`) and the disassembler

@@ -42,9 +42,16 @@
 
 ### Output port
 
-- A single (1) 8-bit output register, with no address. The `OUT rd` instruction
-  writes it and the testbench prints it with `$display`. On an FPGA it would be
-  mapped to LEDs.
+- Four 8-bit output ports, numbered 0..3. The 1-byte `OUT rd` form writes port 0
+  (backward-compatible); the 2-byte `OUT n,rd` form selects the port in its
+  second byte. The CPU drives `out_data` (the value) and `out_port` (the port
+  number), so the environment can route the write to the right device. On the
+  iCEstick only `out_data[4:0]` is visible on the five LEDs.
+- The matching input side has four ports as well: the 1-byte `IN rd` form reads
+  port 0, `IN n,rd` reads port `n`, the environment presents the value on
+  `in_data` and the CPU drives `in_port` while the instruction executes. On the
+  iCEstick all ports read the same byte from the Pmod connector.
+- See §10.9 for the encodings and the exact handshake.
 
 ## 2. Instruction format
 
@@ -207,11 +214,12 @@ The carry is defined from the ALU's **8-bit adder**, which always computes
 
 - `Z = 1` if the result of the flag-setting operation is `0x00`.
 - `N = result[7]` (copy of the MSB).
-- **Only** these instructions update flags: **ADD, ADDI, SUB, SUBI, AND, OR, XOR,
+- **These** instructions update flags: **ADD, ADDI, SUB, SUBI, AND, OR, XOR,
   CMP, CMPI, SHL, SHR, MUL, DIV** and **NEG, NOT, ADC, SBC, ROL, ROR, TEST,
   ADCW, SUBW, POPF** (§10.10),
   and also **INC**/**DEC** (they change `Z`, `N`
-  and `V` but **not** `C`).
+  and `V` but **not** `C`). **LDW/STW** update only `C`; **RETI** restores
+  `C`, `Z`, `N` and `V` from the values saved when the interrupt was taken.
   In **SHL/SHR**, `Z` and `N` are recomputed on the shifted value and `C` holds the
   bit shifted out (see above). Loads (`LDI/MOV/LD`) do **not** touch the flags.
 
@@ -404,6 +412,7 @@ In `programs/` there are several example programs written by hand with the ISA:
 | `extensions.asm`| Immediates `ADDI`/`SUBI`/`CMPI`, indexed `[rs+off]` and signed/status branches (Phase 8) | `0A 0F 08 22 33 11 44 A1 A2 A3 B1 B2` (hex) |
 | `muldiv.asm`    | Hardware `MUL`/`DIV`, including overflow and division by zero (Phase 9) | `2A 90 C1 1C 21 00 C2 C3` (hex) |
 | `inout.asm`     | `IN` input and port output `OUT n, rd` (Phase 9)                | `10 12 AB 55` (hex) |
+| `pmod.asm`      | Pmod hardware demo: endless `IN A` / `OUT A` / `JMP` loop       | low 5 bits of the Pmod byte on the LEDs       |
 | `euclid.asm`    | Greatest common divisor of (144,60) by Euclid's algorithm with `DIV`/`MUL` | `0C` (hex) |
 | `factorial.asm` | Iterative factorial 5! = 120 with the hardware `MUL`            | `78` (hex) |
 | `primes.asm`    | Primes below 32 by trial division with `DIV`/`MUL`             | `02 03 05 07 0B 0D 11 13 17 1D 1F` (hex) |
@@ -513,7 +522,12 @@ the address register with `INC`). Byte 2 packs the `rd` and `rs` indices.
 | `0011`    | `0xF3`| DI          | 1     | `I ← 0` (disables IRQ).         |
 | `0100`    | `0xF4`| LD rd,[rs]  | 2     | `rd ← RAM[rs]` (§10.4).         |
 | `0101`    | `0xF5`| ST rd,[rs]  | 2     | `RAM[rs] ← rd` (§10.4).         |
-| rest      | —     | *(reserved)* | —    | —                               |
+| `0110`    | `0xF6`| MUL rd,rs   | 2     | `rd ← (rd × rs)[7:0]`; C=overflow (§10.8). |
+| `0111`    | `0xF7`| DIV rd,rs   | 2     | `rd ← rd / rs`; C=div-by-zero (§10.8). |
+| `1000`    | `0xF8`| OUT n,rd    | 2     | port n ← rd (§10.9).            |
+| `1001`    | `0xF9`| IN n,rd     | 2     | rd ← port n (§10.9).            |
+| `1010`    | `0xFA`| prefix      | 2     | extended instruction (§10.10).  |
+| `1011-1111` | `0xFB-0xFF` | reserved | 1 | no-op.                        |
 
 ### 10.6 Interrupts
 
