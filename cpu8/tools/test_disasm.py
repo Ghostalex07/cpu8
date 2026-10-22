@@ -131,7 +131,9 @@ PROGRAMAS = sorted((RAIZ / "programs").glob("*.asm"))
 def test_round_trip_programas(asm_path: Path) -> None:
     original = assembler.ensamblar(asm_path.read_text())[0]
     fuente = "\n".join(disasm.desensamblar_crudo(original)) + "\n"
-    reensamblado = assembler.ensamblar(fuente)[0]
+    # The raw listing has no directives; a round-trip must not be blocked by
+    # the stack guard when the original program deliberately used .nostack.
+    reensamblado = assembler.ensamblar(".nostack\n" + fuente)[0]
     assert reensamblado == original, (
         f"{asm_path.name}: the reassembly differs from the original\n{fuente}"
     )

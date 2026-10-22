@@ -38,6 +38,19 @@ def test_longitud_de_ldw_y_stw_es_tres() -> None:
     assert fuzz._longitud("STW C, [D-1]") == 3
 
 
+def test_los_programas_de_wrap_hacen_roundtrip() -> None:
+    # The directed SP-wrap and PC-wrap programs go through the same
+    # assemble -> disassemble -> assemble fuzz pipeline as random sources, so
+    # future changes to the length/label rules cannot silently break them.
+    for name in ("stack_wrap", "pc_wrap"):
+        fuente = (RAIZ / "programs" / f"{name}.asm").read_text()
+        b1 = assembler.ensamblar(fuente)[0]
+        lineas = disasm.desensamblar_crudo(b1)
+        # The raw listing has no directives, so put back the one both programs
+        # need to live above 0xDF.
+        assert assembler.ensamblar(".nostack\n" + "\n".join(lineas) + "\n")[0] == b1
+
+
 def test_los_saltos_generados_caen_en_inicios_de_instruccion() -> None:
     for semilla in range(5):
         rng = random.Random(semilla)

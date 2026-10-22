@@ -43,7 +43,7 @@ _SALTOS = (
     "JMI",
     "JPL",
 )
-_SIN_OPERANDO = ("EI", "DI", "RET", "HLT")
+_SIN_OPERANDO = ("EI", "DI", "RET", "RETI", "HLT")
 
 
 def _longitud(linea: str) -> int:

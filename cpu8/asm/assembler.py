@@ -43,6 +43,9 @@ Source syntax (see ``docs/ISA.md``):
   escapes ``\\n``, ``\\t``, ``\\r``, ``\\0``, ``\\\\`` and ``\\"``);
   ``.dw item, ...`` emits 16-bit little-endian words (numbers, labels or
   constants, two bytes per item, strings not accepted).
+  ``.nostack`` declares that the program never uses the stack, so the image may
+  extend into the area below ``SP`` (needed by the PC-wrap test); use it only
+  when no PUSH/POP/CALL/RET/IRQ can overwrite the code.
 
 It is a **two-pass** assembler: the first pass assigns an address to each label
 (for which it uses the size of each instruction: 2 bytes for
@@ -242,7 +245,7 @@ MNEMONICOS: Final[set[str]] = (
 
 # --- Assembler directives ----------------------------------------------------
 # The mnemonic is normalized to uppercase when the line is parsed.
-DIRECTIVAS: Final[set[str]] = {".ORG", ".DB", ".DW", ".EQU"}
+DIRECTIVAS: Final[set[str]] = {".ORG", ".DB", ".DW", ".EQU", ".NOSTACK"}
 
 # --- Memory layout check -----------------------------------------------------
 # SP starts at 0xF0 and every PUSH stores at SP and then decrements it, so the
@@ -873,6 +876,7 @@ def ensamblar(
     pc = 0
     linea_overflow: int | None = None
     linea_pila: int | None = None
+    sin_pila = False
 
     for i, etiqueta, mnem, ops, texto in crudas:
         if etiqueta is not None:
@@ -901,6 +905,12 @@ def ensamblar(
                 linea_overflow = i
             if pc > TOPE_PILA - MARGEN_PILA and linea_pila is None:
                 linea_pila = i
+            continue
+
+        if mnem == ".NOSTACK":
+            if ops:
+                raise AssemblerError(i, ".nostack takes no arguments")
+            sin_pila = True
             continue
 
         if mnem == ".DB":
@@ -949,7 +959,7 @@ def ensamblar(
         # total number of lines of the file (which includes comments/blank ones).
         raise AssemblerError(linea_overflow, f"program is {pc} bytes; the maximum is 256")
 
-    if linea_pila is not None:
+    if linea_pila is not None and not sin_pila:
         limite = TOPE_PILA - MARGEN_PILA
         raise AssemblerError(
             linea_pila,

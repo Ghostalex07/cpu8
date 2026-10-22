@@ -1,0 +1,13 @@
+=== trace of programs/pc_wrap.hex ===
+    PC   IR   A    B    C    D    Z C N V  SP
+  00   c0   00   00   00   00   0 0 0 0  f0      
+  10   13   00   00   00   00   1 1 0 0  f0      
+  12   d0   00   00   00   00   1 1 0 0  f0      
+  16   c0   00   00   00   00   1 1 0 0  f0      
+  fe   10   2a   00   00   00   1 1 0 0  f0      
+  00   c0   2a   00   00   00   1 1 0 0  f0      
+  10   13   2a   00   00   00   0 1 0 0  f0      
+  12   d0   2a   00   00   00   0 1 0 0  f0      
+  14   e0   2a   00   00   00   0 1 0 0  f0   OUT
+  15   f0   2a   00   00   00   0 1 0 0  f0      
+(HLT after 10 instructions)

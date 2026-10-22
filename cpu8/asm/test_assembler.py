@@ -468,6 +468,16 @@ def test_la_imagen_puede_llegar_al_limite_de_la_pila() -> None:
     assert asm(".org 0xDF\n.db 0xAA") == [0x00] * 0xDF + [0xAA]
 
 
+def test_nostack_permite_usar_la_zona_de_la_pila() -> None:
+    assert asm(".nostack\n.org 0xF0\n.db 0xAA") == [0x00] * 0xF0 + [0xAA]
+    assert asm(".NOSTACK\n.org 0xFE\nLDI A, 0x2A") == ([0x00] * 0xFE + [0x10, 0x2A])
+
+
+def test_nostack_no_admite_operandos() -> None:
+    with pytest.raises(assembler.AssemblerError, match="takes no arguments"):
+        asm(".nostack 1\nHLT")
+
+
 def test_una_instruccion_que_invade_la_pila_es_error() -> None:
     with pytest.raises(assembler.AssemblerError, match="stack"):
         asm(".org 0xDF\nLDI A, 1")
