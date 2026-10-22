@@ -25,6 +25,7 @@ failures, so it can be used in CI (``make regress``).
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import random
 import subprocess
@@ -58,8 +59,47 @@ def _sha(bs: list[int]) -> str:
     return hashlib.sha256(bytes(bs)).hexdigest()
 
 
+def _hex_frescos() -> dict[str, list[int]]:
+    """Assembles every program from source, so nothing stale can leak in."""
+    return {p.stem: assembler.ensamblar(p.read_text())[0] for p in _programas()}
+
+
 def _hex_actuales() -> dict[str, str]:
-    return {p.stem: _sha(assembler.ensamblar(p.read_text())[0]) for p in _programas()}
+    return {n: _sha(b) for n, b in _hex_frescos().items()}
+
+
+def _ruta_hex(p: Path) -> Path:
+    return p.with_suffix(".hex")
+
+
+def _leer_hex(p: Path) -> list[int]:
+    datos = []
+    for linea in p.read_text().splitlines():
+        linea = linea.split(";", 1)[0].split("//", 1)[0]
+        datos.extend(int(tok, 16) for tok in linea.split())
+    return datos
+
+
+def _hex_desactualizados(frescos: dict[str, list[int]]) -> list[str]:
+    """Programs whose committed ``.hex`` does not match its ``.asm``."""
+    malos = []
+    for p in _programas():
+        h = _ruta_hex(p)
+        if not h.exists() or _leer_hex(h) != frescos[p.stem]:
+            malos.append(p.stem)
+    return malos
+
+
+def _escribir_hex_temporales(frescos: dict[str, list[int]]) -> dict[str, Path]:
+    """Writes the freshly assembled bytes under ``build/`` for the testbench."""
+    destino = RAIZ / "build" / "regress"
+    destino.mkdir(parents=True, exist_ok=True)
+    rutas = {}
+    for n, bs in frescos.items():
+        ruta = destino / f"{n}.hex"
+        ruta.write_text("".join(f"{b:02X}\n" for b in bs))
+        rutas[n] = ruta
+    return rutas
 
 
 def _compilar_traza() -> Path:
@@ -67,16 +107,29 @@ def _compilar_traza() -> Path:
     vvp.parent.mkdir(parents=True, exist_ok=True)
     rtl = sorted((RAIZ / "rtl").glob("*.v"))
     subprocess.run(
-        ["iverilog", "-g2012", "-Wall", "-s", "cpu_trace_tb", "-o", str(vvp),
-         str(RAIZ / "tb" / "cpu_trace_tb.v"), *map(str, rtl)],
-        check=True)
+        [
+            "iverilog",
+            "-g2012",
+            "-Wall",
+            "-s",
+            "cpu_trace_tb",
+            "-o",
+            str(vvp),
+            str(RAIZ / "tb" / "cpu_trace_tb.v"),
+            *map(str, rtl),
+        ],
+        check=True,
+    )
     return vvp
 
 
-def _traza(vvp: Path, stem: str) -> str:
+def _traza(vvp: Path, hex_path: Path, stem: str) -> str:
     r = subprocess.run(
-        ["vvp", str(vvp), f"+hex=programs/{stem}.hex"],
-        cwd=RAIZ, capture_output=True, text=True, check=True)
+        ["vvp", str(vvp), f"+hex={hex_path}"], cwd=RAIZ, capture_output=True, text=True, check=True
+    )
+    # The header embeds the +hex argument; normalize it to the committed path so
+    # traces are identical wherever the fresh hex is built.
+    texto = r.stdout.replace(str(hex_path), f"programs/{stem}.hex")
     # The iverilog runtime prints environment-dependent diagnostics to stdout
     # and they must NOT be part of the golden trace:
     #   - 11.0: the $readmemh warning ("Not enough words ...") with the ABSOLUTE
@@ -84,21 +137,48 @@ def _traza(vvp: Path, stem: str) -> str:
     #   - 12.0: "<path>:<line>: $finish called at <time> (1ps)".
     # Both carry paths/times that change between machines and versions.
     ruido = ("WARNING:", "$finish called at", "ERROR:", "$fatal")
-    lineas = [ln for ln in r.stdout.splitlines()
-              if not any(m in ln for m in ruido)]
+    lineas = [ln for ln in texto.splitlines() if not any(m in ln for m in ruido)]
     return "\n".join(lineas) + ("\n" if lineas else "")
 
 
+def _generar_trazas() -> tuple[dict[str, str], Path]:
+    """Builds every trace in memory; nothing is written until all succeed."""
+    frescos = _hex_frescos()
+    hexs = _escribir_hex_temporales(frescos)
+    vvp = _compilar_traza()
+    trazas = {}
+    for p in _programas():
+        if p.stem not in TRACE_EXCLUIDOS:
+            trazas[p.stem] = _traza(vvp, hexs[p.stem], p.stem)
+    return trazas, vvp
+
+
 def actualizar() -> int:
+    frescos = _hex_frescos()
+    malos = _hex_desactualizados(frescos)
+    if malos:
+        print(
+            "regress: refusing to update from stale .hex files: "
+            + ", ".join(malos)
+            + "\n  run `make progtests` first so programs/*.hex matches programs/*.asm",
+            file=sys.stderr,
+        )
+        return 1
+    # Generate everything before touching the golden reference, so a failure
+    # leaves the previous reference intact.
+    trazas, _ = _generar_trazas()
     GOLDEN.mkdir(parents=True, exist_ok=True)
     TRACES.mkdir(parents=True, exist_ok=True)
     (GOLDEN / "hex.sha256").write_text(
-        "".join(f"{n} {h}\n" for n, h in sorted(_hex_actuales().items())))
-    vvp = _compilar_traza()
-    for p in _programas():
-        if p.stem not in TRACE_EXCLUIDOS:
-            (TRACES / f"{p.stem}.trace").write_text(_traza(vvp, p.stem))
-    print(f"Golden reference updated in {GOLDEN.relative_to(RAIZ)}/")
+        "".join(f"{n} {h}\n" for n, h in sorted(_hex_actuales().items()))
+    )
+    for stem, traza in trazas.items():
+        (TRACES / f"{stem}.trace").write_text(traza)
+    try:
+        destino = GOLDEN.relative_to(RAIZ)
+    except ValueError:
+        destino = GOLDEN
+    print(f"Golden reference updated in {destino}/")
     return 0
 
 
@@ -125,13 +205,24 @@ def _primera_diferencia(esperado: str, actual: str) -> str:
         le = ea[i] if i < len(ea) else "<missing>"
         la = aa[i] if i < len(aa) else "<missing>"
         if le != la:
-            return (f"    line {i + 1}:\n"
-                    f"      expected: {le!r}\n"
-                    f"      actual  : {la!r}")
+            return f"    line {i + 1}:\n      expected: {le!r}\n      actual  : {la!r}"
     return "    (no line-by-line differences)"
 
 
+def _comprobar_hex() -> int:
+    """The committed `.hex` must match a fresh assembly of its `.asm`."""
+    frescos = _hex_frescos()
+    fallos = 0
+    for stem in _hex_desactualizados(frescos):
+        print(f"  HEX FAIL {stem}: programs/{stem}.hex is stale (run `make progtests`)")
+        fallos += 1
+    print(f"  hex files: {len(frescos)} programs, {fallos} failures")
+    return fallos
+
+
 def _comprobar_trazas() -> int:
+    frescos = _hex_frescos()
+    hexs = _escribir_hex_temporales(frescos)
     vvp = _compilar_traza()
     dump = RAIZ / "build" / "regress"
     fallos = 0
@@ -146,10 +237,9 @@ def _comprobar_trazas() -> int:
             continue
         n += 1
         esperado = g.read_text()
-        actual = _traza(vvp, p.stem)
+        actual = _traza(vvp, hexs[p.stem], p.stem)
         if actual != esperado:
-            print(f"  TRACE FAIL {p.stem} "
-                  f"(`make trace PROG=programs/{p.stem}` to inspect)")
+            print(f"  TRACE FAIL {p.stem} (`make trace PROG=programs/{p.stem}` to inspect)")
             print(_primera_diferencia(esperado, actual))
             dump.mkdir(parents=True, exist_ok=True)
             (dump / f"{p.stem}.expected.trace").write_text(esperado)
@@ -168,8 +258,7 @@ def _comprobar_fuzz(cuenta: int) -> int:
         src = fuzz.generar_fuente(rng, rng.randrange(1, 40))
         try:
             b1 = assembler.ensamblar(src)[0]
-            b2 = assembler.ensamblar(
-                "\n".join(disasm.desensamblar_crudo(b1)) + "\n")[0]
+            b2 = assembler.ensamblar("\n".join(disasm.desensamblar_crudo(b1)) + "\n")[0]
         except Exception as e:  # noqa: BLE001 (we want to see any failure)
             print(f"  FAIL fuzz #{i}: {e}\n{src}")
             fallos += 1
@@ -182,24 +271,30 @@ def _comprobar_fuzz(cuenta: int) -> int:
 
 
 def main(argv: list[str]) -> int:
-    args = argv[1:]
-    if "--update" in args:
+    parser = argparse.ArgumentParser(
+        prog="regress.py",
+        description="Check bytes, traces and fuzz round-trips against the golden reference.",
+        epilog="Exit codes: 0 = all OK, 1 = regression, 2 = bad arguments.",
+    )
+    parser.add_argument(
+        "--update", action="store_true", help="(re)generate the golden reference from a fresh build"
+    )
+    parser.add_argument(
+        "--fuzz",
+        type=int,
+        default=200,
+        metavar="N",
+        help="number of random programs (default: 200; 0 = none)",
+    )
+    args = parser.parse_args(argv[1:])
+    if args.fuzz < 0:
+        parser.error("--fuzz must be >= 0")
+    if args.update:
         return actualizar()
-    fuzz_n = 200
-    if "--fuzz" in args:
-        k = args.index("--fuzz")
-        if k + 1 >= len(args):
-            print("regress: --fuzz expects a number", file=sys.stderr)
-            return 2
-        try:
-            fuzz_n = int(args[k + 1])
-        except ValueError:
-            print(f"regress: invalid --fuzz value '{args[k + 1]}'", file=sys.stderr)
-            return 2
     print("=== cpu8 regression ===")
-    fallos = _comprobar_bytes() + _comprobar_trazas()
-    if fuzz_n:
-        fallos += _comprobar_fuzz(fuzz_n)
+    fallos = _comprobar_bytes() + _comprobar_hex() + _comprobar_trazas()
+    if args.fuzz:
+        fallos += _comprobar_fuzz(args.fuzz)
     if fallos:
         print(f"REGRESSION: {fallos} failures")
         return 1
