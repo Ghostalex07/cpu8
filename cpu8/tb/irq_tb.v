@@ -3,11 +3,13 @@
 //
 //  Same as cpu_tb.v but additionally:
 //    - instantiates the CPU with IRQ_VECTOR = 0x10,
-//  and - keeps the irq input high after the reset.
+//    - asserts irq after the reset, deasserts it for two cycles and asserts it
+//      again (the level-sensitive request must be serviced exactly once).
 //
 //  The program (by default programs/irq.hex, or +hex=<path>) enables the
 //  interrupts with EI; since I goes low after servicing the first one, only
-//  one is serviced even if irq stays high.  The output is compared with +exp.
+//  one is serviced even if irq is re-asserted.  The output is compared with
+//  +exp.
 //
 //  Generates build/irq_tb.vcd to see it in GTKWave.
 // ============================================================================
@@ -103,13 +105,19 @@ module irq_tb;
 
     $display("=== IRQ simulation (program %0s, %0d bytes) ===", hexfile, nlen);
 
-    // Synchronous reset 2 cycles and, afterwards, irq high throughout the test.
+    // Synchronous reset 2 cycles.  Assert irq, then deassert and reassert it
+    // after a few cycles: the level-sensitive request must still be serviced
+    // exactly once (and the short low pulse must not lose it).
     rst = 1;
     repeat (2) @(posedge clk);
     @(negedge clk) begin
       rst = 0;
       irq = 1;
     end
+    repeat (4) @(posedge clk);
+    @(negedge clk) irq = 0;
+    repeat (2) @(posedge clk);
+    @(negedge clk) irq = 1;
 
     i = 0;
     while (!halted && i < 500000) begin

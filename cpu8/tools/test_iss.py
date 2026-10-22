@@ -275,6 +275,28 @@ def test_irq_no_se_atiende_sin_ei() -> None:
     assert m.regs[0] == 0x00
 
 
+def test_el_dump_expone_flag_i_y_las_banderas_guardadas() -> None:
+    # C=1, Z=0, N=1, V=1 before EI; the interrupt entry saves them as V,N,Z,C
+    # = 1101 (0xD) and clears I.  The handler row exposes both fields.
+    programa = ensambla_hexa(
+        """
+        LDI A, 0x0D
+        PUSH A
+        POPF
+        EI
+    loop: JMP loop
+        .org 0x10
+        HLT
+        """
+    )
+    m = iss.ISS(programa, irq_at=0, irq_vector=0x10)
+    m.run(20)
+    handler = next(r for r in m.rows if r[0] == 0x10)
+    assert handler[15] == 0  # I is cleared by the interrupt entry
+    assert handler[16] == 0b1101
+    assert iss.ISS._row_line(handler).endswith(" 0 1101")
+
+
 def test_reti_restaura_banderas_y_no_reactiva_irq() -> None:
     # CMP A,A sets C=1; the handler clobbers the flags and returns with RETI,
     # so the ADC right after the return still sees C=1 (0 -> 2).  I stays 0

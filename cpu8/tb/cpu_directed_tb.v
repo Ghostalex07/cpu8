@@ -11,6 +11,9 @@
 //    G) Immediates ADDI/SUBI/CMPI and flag V (JVS on overflow).
 //    H) Indexed addressing LD/ST rd,[rs+off].
 //    I) Signed jumps (JLT/JGE) over flag V.
+//    J) Ported I/O (IN/OUT with a port number).
+//    K) Reset from HLT: the CPU leaves S_HLT with dut.ram_we/out_valid low, then
+//       starts again from PC=0 and runs the program a second time.
 //
 //  The programs are written directly into RAM through hierarchical access,
 //  without depending on the assembler.  The OUT sequence is compared with the
@@ -42,6 +45,33 @@ module cpu_directed_tb;
   );
 
   always #5 clk = ~clk;
+
+  // Mutual-exclusion assertions: the control unit must never enable two
+  // resources that would conflict in the same cycle (the RTL documents each
+  // one as exclusive).
+  always @(posedge clk) begin
+    if (!rst) begin
+      if (dut.ram_we && dut.rf_we) begin
+        errors = errors + 1;
+        $display("  FAIL: ram_we and rf_we asserted together");
+      end
+      if (dut.ram_we && dut.out_wr) begin
+        errors = errors + 1;
+        $display("  FAIL: ram_we and out_wr asserted together");
+      end
+      if (dut.pc_inc && dut.pc_load) begin
+        errors = errors + 1;
+        $display("  FAIL: pc_inc and pc_load asserted together");
+      end
+      if (dut.sp_inc && dut.sp_dec) begin
+        errors = errors + 1;
+        $display("  FAIL: sp_inc and sp_dec asserted together");
+      end
+    end
+  end
+
+  localparam [2:0] S_FETCH = 3'd0;
+  localparam [2:0] S_HLT = 3'd4;
 
   integer errors = 0;
   integer i;
@@ -339,6 +369,52 @@ module cpu_directed_tb;
     chkout(1, 8'hAB);
     chkport(1, 2'd0);
     in_data = 8'h00;
+
+    // K) Reset from HLT: run a tiny program, stop in S_HLT, then reset and run
+    // it again.  No memory write or OUT pulse may leak while halted, and the
+    // reset must recover the fetch state and PC=0.
+    limpia_mem;
+    poke(8'h00, 8'h10);
+    poke(8'h01, 8'h5A);  // LDI A,0x5A
+    poke(8'h02, 8'hE0);  // OUT A
+    poke(8'h03, 8'hF0);  // HLT
+    arranca;
+    corre(2000);
+    chknout(1);
+    chkout(0, 8'h5A);
+    if (!halted || dut.u_ctrl.state !== S_HLT) begin
+      errors = errors + 1;
+      $display("  FAIL: CPU did not stay in S_HLT (halted=%b state=%0d)", halted, dut.u_ctrl.state);
+    end
+    if (dut.ram_we !== 1'b0) begin
+      errors = errors + 1;
+      $display("  FAIL: dut.ram_we=%b while halted, expected 0", dut.ram_we);
+    end
+    if (out_valid !== 1'b0) begin
+      errors = errors + 1;
+      $display("  FAIL: out_valid=%b while halted, expected 0", out_valid);
+    end
+
+    rst = 1;
+    repeat (2) @(posedge clk);
+    #1;
+    if (dut.u_ctrl.state !== S_FETCH || halted !== 1'b0 || dut.pc_q !== 8'h00) begin
+      errors = errors + 1;
+      $display("  FAIL: reset from HLT: state=%0d halted=%b PC=%02h", dut.u_ctrl.state, halted,
+               dut.pc_q);
+    end
+    if (dut.ram_we !== 1'b0 || out_valid !== 1'b0) begin
+      errors = errors + 1;
+      $display("  FAIL: reset from HLT: dut.ram_we=%b out_valid=%b", dut.ram_we, out_valid);
+    end
+    @(negedge clk) rst = 0;
+    corre(2000);
+    chknout(1);
+    chkout(0, 8'h5A);
+    if (!halted) begin
+      errors = errors + 1;
+      $display("  FAIL: CPU did not halt again after reset from HLT");
+    end
 
     if (errors == 0) $display("CPU_DIRECTED: ALL TESTS PASSED");
     else $display("CPU_DIRECTED: %0d FAILURES", errors);

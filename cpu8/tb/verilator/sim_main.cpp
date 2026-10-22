@@ -60,12 +60,19 @@ int main(int argc, char** argv) {
         top->clk = 1; top->eval(); g_time += 5;
     };
 
-    // Synchronous reset: 2 cycles with rst=1, then it is released.
+    // Synchronous reset: 2 cycles with rst=1, then it is released.  With IRQ
+    // enabled by the program, exercise a high -> low -> high request sequence
+    // so the level-sensitive input is not assumed static.
     top->rst = 1;
     top->irq = 0;
     tick();
     tick();
     top->rst = 0;
+    top->irq = usar_irq ? 1 : 0;
+    tick();
+    top->irq = 0;
+    tick();
+    tick();
     top->irq = usar_irq ? 1 : 0;
 
     // Runs until HLT (or until the wait time is exhausted).

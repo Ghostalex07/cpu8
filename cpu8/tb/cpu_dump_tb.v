@@ -8,16 +8,20 @@
 //  format as the reference model ``tools/iss.py``, so that
 //  ``tools/difftest.py`` compares them line by line:
 //
-//      I <pc> <ir> <a> <b> <c> <d> <z> <cf> <n> <v> <sp> <pcnext> <ov> <odata> <oport>
+//      I <pc> <ir> <a> <b> <c> <d> <z> <cf> <n> <v> <sp> <pcnext> <ov> <odata> <oport> <i> <saved>
 //      M <256 bytes>                (final RAM contents)
 //      END <n_instructions>
+//
+//  <saved> is the 4-bit C/Z/N/V snapshot taken on interrupt entry, in the RTL
+//  bit order V,N,Z,C (binary).
 //
 //  Details:
 //   - The RAM is set to ZERO before loading the program (ram.v has no reset,
 //     so in iverilog the unloaded locations would be X).  The ISS also assumes
 //     RAM at zero.
 //   - Input as in the other tbs: in_data = 0x10 + port.
-//   - irq is left at 0 (the differential fuzz does not cover IRQ; irqtest does).
+//   - irq is driven from +irq=<retired instructions> by the differential
+//     fuzz; without that plusarg it stays low.
 // ============================================================================
 
 module cpu_dump_tb;
@@ -96,10 +100,10 @@ module cpu_dump_tb;
     if (!rst) begin
       if ((st_d == S_EXEC && dut.u_ctrl.state != S_EXEC2 &&
            dut.u_ctrl.state != S_IN) || st_d == S_EXEC2 || st_d == S_IN) begin
-        $display("I %02h %02h %02h %02h %02h %02h %b %b %b %b %02h %02h %b %02h %02h", trace_pc,
-                 dut.IR, dut.u_rf.regs[0], dut.u_rf.regs[1], dut.u_rf.regs[2], dut.u_rf.regs[3],
-                 dut.flag_z, dut.flag_c, dut.flag_n, dut.flag_v, dut.SP, dut.pc_q, out_valid,
-                 out_data, out_port);
+        $display("I %02h %02h %02h %02h %02h %02h %b %b %b %b %02h %02h %b %02h %02h %b %b",
+                 trace_pc, dut.IR, dut.u_rf.regs[0], dut.u_rf.regs[1], dut.u_rf.regs[2],
+                 dut.u_rf.regs[3], dut.flag_z, dut.flag_c, dut.flag_n, dut.flag_v, dut.SP,
+                 dut.pc_q, out_valid, out_data, out_port, dut.flag_i, dut.flags_saved);
         n = n + 1;
         if (n >= maxi) begin
           $display("END %0d", n);

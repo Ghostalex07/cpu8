@@ -686,11 +686,12 @@ class Debugger:
 
 
 def _format_row(row: tuple, labels: dict[str, int] | None = None) -> str:
-    (pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op) = row
+    (pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op, fi, sv) = row
     sym = f" ({labels[pc]})" if labels and pc in labels else ""
     return (
         f"  PC={pc:02X}{sym} IR={ir:02X} A={a:02X} B={b:02X} C={c:02X} D={d:02X} "
-        f"Z{z}C{cf}N{n}V{v} SP={sp:02X} -> {pcn:02X}" + (f"  OUT {od:02X}/{op}" if ov else "")
+        f"Z{z}C{cf}N{n}V{v} I{fi} SV={sv:04b} SP={sp:02X} -> {pcn:02X}"
+        + (f"  OUT {od:02X}/{op}" if ov else "")
     )
 
 

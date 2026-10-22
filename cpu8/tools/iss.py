@@ -394,8 +394,15 @@ class ISS:
             out_valid,
             self.out_data,
             self.out_port,
+            self.fi,
+            self._saved_bits(),
         )
         return row
+
+    def _saved_bits(self) -> int:
+        """C/Z/N/V snapshot as the RTL's 4-bit flags_saved (V,N,Z,C)."""
+        c, z, n, v = self.flags_saved
+        return (v << 3) | (n << 2) | (z << 1) | c
 
     def take_irq(self) -> None:
         """Services an interrupt (S_IRQ state): pushes PC, clears I and jumps to the vector.
@@ -438,10 +445,11 @@ class ISS:
     # -- output in the same format as tb/cpu_dump_tb.v -----------------------
     @staticmethod
     def _row_line(r: tuple) -> str:
-        pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op = r
+        pc, ir, a, b, c, d, z, cf, n, v, sp, pcn, ov, od, op, fi, sv = r
         return (
             f"I {pc:02X} {ir:02X} {a:02X} {b:02X} {c:02X} {d:02X} "
-            f"{z} {cf} {n} {v} {sp:02X} {pcn:02X} {ov} {od:02X} {op:02X}"
+            f"{z} {cf} {n} {v} {sp:02X} {pcn:02X} {ov} {od:02X} {op:02X} "
+            f"{fi} {sv:04b}"
         )
 
     def dump(self) -> list[str]:
