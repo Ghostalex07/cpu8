@@ -23,6 +23,10 @@ Source syntax (see ``docs/ISA.md``):
   two's complement over 8 bits (``-1`` -> ``0xFF``); the valid range is
   ``-128..255`` (negatives are a convenience for writing masks or signed
   immediates).
+* Expressions: ``term + term - term ...`` where each term is a number, label or
+  constant, e.g. ``LD A, [tab+3]`` or ``.equ END, START+10``.  Constants defined
+  with ``.equ`` hold 16 bits (``-32768..65535``) and are range-checked when used
+  in an 8-bit context.
 * Direct ``LD``/``ST`` accept the address with or without brackets:
   ``LD A, [0x20]`` or ``LD A, 0x20``.  The destination can be a label.
 * **Indirect** ``LD``/``ST`` (by register): ``LD A, [B]`` = ``A <- RAM[B]``.
@@ -255,6 +259,10 @@ _RE_DECIMAL: Final = re.compile(r"[0-9]+")
 # a register name (not a label) to be treated this way.  The displacement can
 # be a number (with sign) or a label.
 _RE_INDEXADO: Final = re.compile(r"\s*([A-Za-z_][A-Za-z0-9_]*)\s*([+\-])\s*(\S.*)?$")
+# One term of an expression: identifier, $hex, 0xhex, 0bbin or decimal.
+_RE_TERMINO: Final = re.compile(
+    r"[A-Za-z_][A-Za-z0-9_]*|\$[0-9A-Fa-f]+|0[xX][0-9A-Fa-f]+|0[bB][01]+|[0-9]+"
+)
 
 # Accepted range for literals: 0..255, plus -128..-1 in two's complement.
 _VALOR_MIN: Final = -128
@@ -311,6 +319,68 @@ def parsear_numero(tok: str) -> int:
     else:
         raise ValueError(f"invalid number: '{tok}'")
     return signo * valor
+
+
+def evaluar_expresion(
+    expr: str,
+    resolver_simbolo: Callable[[str], int] | None = None,
+    num_linea: int = 0,
+) -> int:
+    """Evaluates ``term (+|-) term ...``.
+
+    Terms are numeric literals (see :func:`parsear_numero`) or identifiers,
+    which are looked up through ``resolver_simbolo``.  Raises
+    :class:`AssemblerError` with a clear message on malformed input.
+    """
+    s = expr.strip()
+    if not s:
+        raise AssemblerError(num_linea, "empty expression")
+
+    def _error(detalle: str) -> AssemblerError:
+        return AssemblerError(num_linea, f"invalid expression '{expr}': {detalle}")
+
+    total = 0
+    i = 0
+    signo = 1
+    esperando_termino = True
+    while i < len(s):
+        if s[i].isspace():
+            i += 1
+            continue
+        if s[i] in "+-":
+            if not esperando_termino:
+                signo = 1 if s[i] == "+" else -1
+                esperando_termino = True
+                i += 1
+                continue
+            # Leading sign, or a second sign right after an operator.
+            if s[i] == "-":
+                signo = -signo
+            i += 1
+            continue
+        if not esperando_termino:
+            raise _error("expected '+' or '-' between terms")
+        m = _RE_TERMINO.match(s, i)
+        if not m:
+            raise _error(f"unexpected character '{s[i]}'")
+        termino = m.group()
+        if _RE_IDENTIFICADOR.fullmatch(termino):
+            if resolver_simbolo is None:
+                raise _error(f"unknown symbol '{termino}'")
+            valor = resolver_simbolo(termino)
+        else:
+            try:
+                valor = parsear_numero(termino)
+            except ValueError:
+                raise _error(f"invalid number '{termino}'") from None
+        total += signo * valor
+        signo = 1
+        esperando_termino = False
+        i = m.end()
+
+    if esperando_termino:
+        raise _error("missing term")
+    return total
 
 
 def _cortar_comentario(texto: str) -> str:
@@ -479,12 +549,10 @@ def codificar(
                     "indexed addressing uses base B, C or D "
                     "(with base A the absolute mode would be used)",
                 )
-            expr = (m_idx.group(3) or "").strip()
-            if not expr:
+            expr = (m_idx.group(2) or "") + (m_idx.group(3) or "").strip()
+            if expr in ("+", "-"):
                 raise AssemblerError(num_linea, "missing indexed displacement")
             off = resolver_valor(resolver, expr, num_linea)
-            if m_idx.group(2) == "-":
-                off = (-off) & 0xFF  # negative displacement (two's complement)
             return [((OP_LD if mnem == "LD" else OP_ST) << 4) | (rd << 2) | REGISTROS[base], off]
         # If the 2nd operand is a register -> indirect: LD/ST rd,[rs].
         if es_indirecto(op2, etiquetas, constantes):
@@ -587,12 +655,10 @@ def codificar(
                     "(use a register A, B, C or D)",
                 )
             rs = indice_registro(m_idx.group(1), num_linea)
-            expr = (m_idx.group(3) or "").strip()
-            if not expr:
+            expr = (m_idx.group(2) or "") + (m_idx.group(3) or "").strip()
+            if expr in ("+", "-"):
                 raise AssemblerError(num_linea, "missing indexed displacement")
             off = resolver_valor(resolver, expr, num_linea)
-            if m_idx.group(2) == "-":
-                off = (-off) & 0xFF  # negative displacement
         elif (
             not m_idx
             and _RE_IDENTIFICADOR.fullmatch(op2)
@@ -741,6 +807,13 @@ def _comprobar_rango(bruto: int, num_linea: int) -> int:
     return valor
 
 
+def _comprobar_rango16(bruto: int, num_linea: int) -> int:
+    """Validates -32768..65535 for constants/``.dw`` (16-bit values)."""
+    if not (-0x8000 <= bruto <= 0xFFFF):
+        raise AssemblerError(num_linea, f"value {bruto} out of range 0..65535 (or -32768..-1)")
+    return bruto
+
+
 # ============================================================================
 #  Main process (two passes + constants)
 # ============================================================================
@@ -767,18 +840,20 @@ def ensamblar(
     # ---- Pass 0: constants (.equ) ------------------------------------------
     constantes: dict[str, int] = {}
 
-    def resolver_const(tok: str, num_linea: int, *, unsigned: bool = False) -> int:
-        if tok in constantes:
-            return constantes[tok]
-        try:
-            bruto = parsear_numero(tok)
-        except ValueError:
-            if _RE_IDENTIFICADOR.fullmatch(tok):
-                raise AssemblerError(num_linea, f"undefined constant '{tok}'") from None
-            raise AssemblerError(num_linea, f"invalid value '{tok}'") from None
-        if unsigned and bruto < 0:
-            raise AssemblerError(num_linea, f"value {bruto} out of range 0..255")
-        return _comprobar_rango(bruto, num_linea)
+    def resolver_const(tok: str, num_linea: int, *, org: bool = False) -> int:
+        def simbolo(nombre: str) -> int:
+            if nombre in constantes:
+                return constantes[nombre]
+            raise AssemblerError(num_linea, f"undefined constant '{nombre}'")
+
+        bruto = evaluar_expresion(tok, simbolo, num_linea)
+        if org:
+            if not 0 <= bruto <= 0xFF:
+                raise AssemblerError(
+                    num_linea, f".org address {bruto} out of range 0..255 (0x00..0xFF)"
+                )
+            return bruto
+        return _comprobar_rango16(bruto, num_linea)
 
     for i, _etq, mnem, ops, _texto in crudas:
         if mnem != ".EQU":
@@ -815,7 +890,7 @@ def ensamblar(
         if mnem == ".ORG":
             if len(ops) != 1:
                 raise AssemblerError(i, ".org expects an address")
-            destino = resolver_const(ops[0], i, unsigned=True)
+            destino = resolver_const(ops[0], i, org=True)
             if destino < pc:
                 raise AssemblerError(
                     i, f".org 0x{destino:02X} goes backwards (PC is already 0x{pc:02X})"
@@ -885,34 +960,32 @@ def ensamblar(
 
     # ---- Pass 2: encode, resolve labels and emit ---------------------------
     def resolver(tok: str) -> int:
-        if tok in etiquetas:
-            return etiquetas[tok]
-        if tok in constantes:
-            return constantes[tok]
+        def simbolo(nombre: str) -> int:
+            if nombre in etiquetas:
+                return etiquetas[nombre]
+            if nombre in constantes:
+                return constantes[nombre]
+            raise AssemblerError(0, f"undefined label '{nombre}'")
+
+        bruto = evaluar_expresion(tok, simbolo, 0)
         try:
-            bruto = parsear_numero(tok)
-        except ValueError:
-            if _RE_IDENTIFICADOR.fullmatch(tok):
-                raise AssemblerError(0, f"undefined label '{tok}'") from None
-            raise AssemblerError(0, f"invalid value '{tok}'") from None
-        # Negative literals are accepted in two's complement (byte).
-        return _comprobar_rango(bruto, 0)
+            # Negative literals are accepted in two's complement (byte).
+            return _comprobar_rango(bruto, 0)
+        except AssemblerError as e:
+            raise AssemblerError(0, f"{e.mensaje} in '{tok}'") from None
 
     def resolver_dw(tok: str) -> int:
         """Like ``resolver`` but with the 16-bit range needed by ``.dw``."""
-        if tok in etiquetas:
-            return etiquetas[tok]
-        if tok in constantes:
-            return constantes[tok]
-        try:
-            bruto = parsear_numero(tok)
-        except ValueError:
-            if _RE_IDENTIFICADOR.fullmatch(tok):
-                raise AssemblerError(0, f"undefined label '{tok}'") from None
-            raise AssemblerError(0, f"invalid value '{tok}'") from None
-        if not (-0x8000 <= bruto <= 0xFFFF):
-            raise AssemblerError(0, f"value {bruto} out of range 0..65535 (or -32768..-1)")
-        return bruto & 0xFFFF
+
+        def simbolo(nombre: str) -> int:
+            if nombre in etiquetas:
+                return etiquetas[nombre]
+            if nombre in constantes:
+                return constantes[nombre]
+            raise AssemblerError(0, f"undefined label '{nombre}'")
+
+        bruto = evaluar_expresion(tok, simbolo, 0)
+        return _comprobar_rango16(bruto, 0) & 0xFFFF
 
     salida: list[int] = []
     listado: list[tuple[int, list[int], str]] = []
@@ -1000,6 +1073,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         salida, etiquetas, listado = ensamblar(texto)
     except AssemblerError as e:
         print(f"Assembly error in {args.fuente}, {e}", file=sys.stderr)
+        if 1 <= e.num_linea <= len(texto.splitlines()):
+            fuente_linea = texto.splitlines()[e.num_linea - 1]
+            print(f"{e.num_linea:5} | {fuente_linea}", file=sys.stderr)
+        # Do not leave a previous, now misleading .hex next to the source.
+        if os.path.abspath(fichero_salida) != os.path.abspath(args.fuente):
+            try:
+                os.unlink(fichero_salida)
+            except FileNotFoundError:
+                pass
+            except OSError as err:
+                print(
+                    f"Warning: cannot remove stale '{fichero_salida}': {err}",
+                    file=sys.stderr,
+                )
         return 1
 
     if not salida:

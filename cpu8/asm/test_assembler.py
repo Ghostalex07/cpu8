@@ -407,6 +407,38 @@ def test_equ_encadenada() -> None:
     assert asm(".equ BASE, 0x10\n.equ TOPE, BASE\nLDI A, TOPE") == [0x10, 0x10]
 
 
+def test_equ_admite_16_bits_y_expresiones() -> None:
+    assert asm(".equ BIG, 0x1234\n.dw BIG") == [0x34, 0x12]
+    assert asm(".equ END, 0x10+3\nLDI A, END") == [0x10, 0x13]
+    assert asm(".equ BASE, 0x20\n.equ TOPE, BASE+2\n.dw TOPE") == [0x22, 0x00]
+
+
+def test_equ_16_bits_no_se_trunca_en_un_contexto_de_8_bits() -> None:
+    with pytest.raises(assembler.AssemblerError, match=r"out of range.*BIG"):
+        asm(".equ BIG, 0x1234\nLDI A, BIG")
+
+
+def test_expresion_en_direccion_indexada() -> None:
+    # LD A,[tab+1]: tab = 3, so the address is 4.
+    assert asm("LD A, [tab+1]\nHLT\ntab: .db 1, 2") == [0x30, 0x04, 0xF0, 0x01, 0x02]
+    assert asm("LD A, [B+3+2]") == [0x31, 0x05]
+    assert asm("LD A, [B-3]") == [0x31, 0xFD]
+
+
+def test_expresion_de_8_bits_fuera_de_rango_es_error() -> None:
+    with pytest.raises(assembler.AssemblerError, match=r"0\.\.255.*0x1234\+3"):
+        asm("LD A, [0x1234+3]")
+
+
+def test_expresion_mal_formada_es_error() -> None:
+    with pytest.raises(assembler.AssemblerError, match="invalid expression"):
+        asm("LDI A, 1+*2\n")
+
+
+def test_org_admite_una_expresion() -> None:
+    assert asm(".org 3+1\nHLT") == [0x00, 0x00, 0x00, 0x00, 0xF0]
+
+
 def test_equ_duplicada_es_error() -> None:
     with pytest.raises(assembler.AssemblerError, match="duplicated constant"):
         asm(".equ X, 1\n.equ X, 2\nHLT")
@@ -580,6 +612,19 @@ def test_main_devuelve_uno_con_error(tmp_path: Path) -> None:
     fuente.write_text("JMP nope\n")
     rc = assembler.main([str(fuente), "-o", str(tmp_path / "p.hex")])
     assert rc == 1
+
+
+def test_main_muestra_la_linea_y_borra_el_hex_viejo(tmp_path: Path, capsys) -> None:
+    fuente = tmp_path / "p.asm"
+    fuente.write_text("LDI A, 1\nLDI A, [0x1234+3]\n")
+    salida = tmp_path / "p.hex"
+    salida.write_text("VIEJO\n")
+    rc = assembler.main([str(fuente), "-o", str(salida)])
+    assert rc == 1
+    err = capsys.readouterr().err
+    assert "line 2" in err
+    assert "2 | LDI A, [0x1234+3]" in err
+    assert not salida.exists()
 
 
 def test_una_etiqueta_no_puede_tapar_una_constante() -> None:
