@@ -49,31 +49,43 @@ IVERILOG = _tool("iverilog", "iverilog")
 VVP = _tool("vvp", "vvp")
 
 
+def _comprobar_herramientas() -> str | None:
+    """Returns an error message if the simulator is not installed."""
+    faltan = [n for n in ("iverilog", "vvp") if shutil.which(n) is None]
+    if faltan:
+        return (
+            f"difftest: {', '.join(faltan)} not found in PATH; install Icarus "
+            "Verilog (e.g. `apt install iverilog`) or run with make and its "
+            "environment"
+        )
+    return None
+
+
 def compilar_tb() -> Path:
     BUILD.mkdir(exist_ok=True)
     salida = BUILD / "cpu_dump.vvp"
     fuentes = [str(TB_DIR / "cpu_dump_tb.v")] + sorted(str(p) for p in RTL_DIR.glob("*.v"))
     subprocess.run(
-        [IVERILOG, "-g2012", "-Wall", "-s", "cpu_dump_tb", "-o", str(salida), *fuentes],
-        check=True)
+        [IVERILOG, "-g2012", "-Wall", "-s", "cpu_dump_tb", "-o", str(salida), *fuentes], check=True
+    )
     return salida
 
 
-def run_rtl(vvp: Path, hexfile: Path, max_steps: int,
-            irq_at: int | None = None) -> list[str]:
-    nivel = 10 ** 9 if irq_at is None else irq_at
+def run_rtl(vvp: Path, hexfile: Path, max_steps: int, irq_at: int | None = None) -> list[str]:
+    nivel = 10**9 if irq_at is None else irq_at
     res = subprocess.run(
         [VVP, str(vvp), f"+hex={hexfile}", f"+max={max_steps}", f"+irq={nivel}"],
-        check=True, capture_output=True, text=True)
-    return [ln for ln in res.stdout.splitlines()
-            if ln[:2] in ("I ", "M ", "END") or ln.startswith("END")]
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return [ln for ln in res.stdout.splitlines() if ln.startswith(("I ", "M ", "END"))]
 
 
-def run_iss(mem: list[int], max_steps: int,
-            irq_at: int | None = None) -> list[str]:
+def run_iss(mem: list[int], max_steps: int, irq_at: int | None = None) -> tuple[list[str], int]:
     modelo = iss.ISS(mem, irq_vector=IRQ_VECTOR, irq_at=irq_at)
     modelo.run(max_steps)
-    return modelo.dump()
+    return modelo.dump(), modelo.irqs
 
 
 def _norm(lineas: list[str]) -> list[str]:
@@ -96,21 +108,30 @@ def _guardar_fallo(destino: Path, fuente: str, hexfile: Path) -> None:
     shutil.copy(hexfile, destino / "fallo.hex")
 
 
-def probar(nombre: str, fuente: str, bytes_prog: list[int], vvp: Path,
-           max_steps: int, dir_fallos: Path,
-           irq_at: int | None = None) -> bool:
+def probar(
+    nombre: str,
+    fuente: str,
+    bytes_prog: list[int],
+    vvp: Path,
+    max_steps: int,
+    dir_fallos: Path,
+    irq_at: int | None = None,
+) -> bool:
     with tempfile.TemporaryDirectory() as td:
         hexfile = Path(td) / "prog.hex"
         hexfile.write_text("\n".join(f"{b:02X}" for b in bytes_prog) + "\n")
         rtl = run_rtl(vvp, hexfile, max_steps, irq_at)
-        modelo = run_iss(bytes_prog, max_steps, irq_at)
+        modelo, irqs = run_iss(bytes_prog, max_steps, irq_at)
+        if irq_at is None:
+            etiqueta = ""
+        else:
+            estado = "taken" if irqs else "not taken"
+            etiqueta = f" [irq>={irq_at}, {estado}]"
         ok, k, detalle = comparar(rtl, modelo)
         if ok:
-            etiqueta = "" if irq_at is None else f" [irq>={irq_at}]"
             print(f"  ok   {nombre}{etiqueta} ({len(_norm(rtl)) - 2} instructions)")
             return True
-        print(f"  FAIL {nombre} at instruction #{k}"
-              + ("" if irq_at is None else f" [irq>={irq_at}]"))
+        print(f"  FAIL {nombre} at instruction #{k}{etiqueta}")
         print(f"   {detalle}")
         print("   --- program ---")
         for ln in disasm.desensamblar(bytes_prog):
@@ -120,18 +141,27 @@ def probar(nombre: str, fuente: str, bytes_prog: list[int], vvp: Path,
         return False
 
 
-def main() -> int:
-    ap = argparse.ArgumentParser(description=__doc__,
-                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     ap.add_argument("--count", type=int, default=100, help="random programs")
     ap.add_argument("--seed", type=int, default=1)
     ap.add_argument("--max", type=int, default=4096, help="instruction cap")
     ap.add_argument("--progs", action="store_true", help="only programs/*.asm")
     ap.add_argument("--instr", type=int, default=40, help="instructions per random program")
-    ap.add_argument("--irq-prob", type=float, default=0.5,
-                    help="prob. of running a random program with irq active")
-    args = ap.parse_args()
+    ap.add_argument(
+        "--irq-prob",
+        type=float,
+        default=0.5,
+        help="prob. of running a random program with irq active",
+    )
+    args = ap.parse_args(argv)
 
+    error = _comprobar_herramientas()
+    if error is not None:
+        print(error, file=sys.stderr)
+        return 2
     vvp = compilar_tb()
     dir_fallos = BUILD / "difftest-fallos"
     if dir_fallos.exists():
@@ -163,8 +193,7 @@ def main() -> int:
             try:
                 b, _, _ = assembler.ensamblar(src)
             except assembler.AssemblerError as e:
-                print(f"  FAIL fuzz_{args.seed}_{i}: generated program does not "
-                      f"assemble: {e}")
+                print(f"  FAIL fuzz_{args.seed}_{i}: generated program does not assemble: {e}")
                 fallos += 1
                 continue
             probados += 1
@@ -173,8 +202,7 @@ def main() -> int:
             irq_at = None
             if rng.random() < args.irq_prob:
                 irq_at = rng.randrange(0, max(2, args.max // 8 + 2))
-            if not probar(f"fuzz_{args.seed}_{i}", src, b, vvp, args.max,
-                          dir_fallos, irq_at):
+            if not probar(f"fuzz_{args.seed}_{i}", src, b, vvp, args.max, dir_fallos, irq_at):
                 fallos += 1
 
     if fallos:
