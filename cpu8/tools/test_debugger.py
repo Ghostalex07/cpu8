@@ -71,6 +71,14 @@ def test_step_advances_and_counts_cycles():
     assert dbg.iss.outs == [(3, 0)]
 
 
+def test_in_waits_one_extra_cycle():
+    dbg, _ = build("IN A\nIN 2, B\nHLT\n")
+    dbg.step()  # IN A: 1 byte + S_IN wait state = 3 cycles
+    assert (dbg.iss.PC, dbg.cycles) == (1, 3)
+    dbg.step()  # IN 2,B: 2 bytes + S_IN wait state = 4 cycles
+    assert (dbg.iss.PC, dbg.cycles) == (3, 7)
+
+
 def test_hlt_halts_and_warns_on_further_steps():
     dbg, logs = build(COUNT)
     dbg.run()

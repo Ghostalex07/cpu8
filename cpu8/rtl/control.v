@@ -4,7 +4,7 @@
 //  Decodes the current instruction (`instr`) and the flags, and generates all
 //  the control signals of the datapath.  The datapath (cpu.v) decides nothing.
 //
-//  7-state FSM.  The instruction length is decided in FETCH itself from the
+//  8-state FSM.  The instruction length is decided in FETCH itself from the
 //  byte that was just read from RAM (`fetched`), so a separate DECODE state is
 //  not needed: the instruction is already loaded into IR in that same cycle.
 //  No combinational loop is formed because during FETCH `ram_addr` is the PC
@@ -14,7 +14,8 @@
 //      S_IRQ    -> S_FETCH             (pushes the PC and jumps to the vector)
 //      S_OPR    -> (prefixed and subop 7/8) ? S_OPR2 : S_EXEC
 //      S_OPR2   -> S_EXEC              (3rd byte of LDW/STW)
-//      S_EXEC   -> (ADCW/SUBW ? S_EXEC2 : (instr == HLT ? S_HLT : S_FETCH))
+//      S_EXEC   -> (IN ? S_IN : ADCW/SUBW ? S_EXEC2 : (instr == HLT ? S_HLT : S_FETCH))
+//      S_IN     -> S_FETCH              (IN: capture in_data)
 //      S_EXEC2  -> S_FETCH              (high byte of ADCW/SUBW)
 //      S_HLT    -> S_HLT
 //
@@ -96,7 +97,8 @@ module control (
     output reg       flag_save,     // S_IRQ: save C,Z,N,V for RETI
     output reg       flag_restore,  // RETI: restore the flags saved on IRQ entry
     output reg       sel_in,        // the destination register takes in_data (IN)
-    output reg       io_op,         // ported form: the port goes in operand[1:0]
+    output reg       io_op,         // port bus: the port is in operand[1:0]
+    output reg       io_op_fetch,   // S_OPR: the port is in fetched[1:0] (early)
 
     output wire halted  // 1 when the CPU is stopped (after HLT)
 );
@@ -136,7 +138,8 @@ module control (
                      S_IRQ    = 3'd3,
                      S_HLT    = 3'd4,
                      S_OPR2   = 3'd5,   // 3rd byte of a prefixed instruction
-  S_EXEC2 = 3'd6;  // high byte of ADCW/SUBW
+  S_EXEC2 = 3'd6,  // high byte of ADCW/SUBW
+  S_IN = 3'd7;  // IN: wait for the selected input port to settle
 
   // --- Instruction fields ---
   wire [3:0] opcode = instr[7:4];
@@ -183,6 +186,10 @@ module control (
 
   // HLT is exactly 0xF0: group 0xF includes RET/EI/DI/indirect.
   wire is_hlt = (instr == 8'hF0);
+
+  // IN has a wait state so that `in_port` is stable before `in_data` is
+  // captured: 0xE1 (IN rd, port 0) or the ported form 0xF9.
+  wire is_in = (instr == 8'hF9) || ((opcode == OP_OUT) && (rs == 2'b01));
 
   // --- Prefixed (extended) instructions: byte1 = 0xFA ---
   // byte2 = (xop << 4) | (rd << 2) | rs.  The full byte is registered as `xop`
@@ -234,6 +241,7 @@ module control (
     flag_restore = 1'b0;
     sel_in       = 1'b0;
     io_op        = 1'b0;
+    io_op_fetch  = 1'b0;
     ext          = 1'b0;
     xop_ld       = 1'b0;
     rf_we2       = 1'b0;
@@ -287,6 +295,11 @@ module control (
           nstate = (fop == 4'h7 || fop == 4'h8) ? S_OPR2 : S_EXEC;
         end else begin
           opr_ld = 1'b1;  // operand <= RAM[PC]
+          // Ported I/O: expose the port while the operand byte is still on
+          // the RAM bus, one cycle earlier than S_EXEC.  Together with the
+          // wait state S_IN this gives the environment two clock edges to
+          // present the data before it is sampled.
+          if (instr == 8'hF8 || instr == 8'hF9) io_op_fetch = 1'b1;
           nstate = S_EXEC;
         end
       end
@@ -522,9 +535,8 @@ module control (
               case (rs)
                 2'b00:   out_wr = 1'b1;  // OUT rd
                 2'b01: begin
-                  rf_we    = 1'b1;
-                  rf_waddr = rd;  // IN rd
-                  sel_in   = 1'b1;
+                  // IN rd: the register write and the in_data capture happen
+                  // in S_IN, after the one-cycle port-selection hold.
                 end
                 default: ;
               endcase
@@ -580,10 +592,9 @@ module control (
                 io_op  = 1'b1;   // port = operand[1:0]
                 out_wr = 1'b1;
               end else if (instr == 8'hF9) begin  // IN n,rd (2 bytes)
-                ind    = 1'b1;
-                io_op  = 1'b1;
-                rf_we  = 1'b1;
-                sel_in = 1'b1;
+                ind   = 1'b1;
+                io_op = 1'b1;  // keep the selected port visible in S_EXEC/S_IN
+                // The register write happens in S_IN (see below).
               end
               // 0xF0 HLT: the FSM stops via is_hlt
             end
@@ -594,9 +605,29 @@ module control (
             default: ;
             /* verilator coverage_on */
           endcase
-        // ADCW/SUBW need a 2nd EXEC cycle for the high byte of the
-        // pair; everything else finishes here.
-        nstate = (is_ext && (xsub == 4'hC || xsub == 4'hD)) ? S_EXEC2 : (is_hlt ? S_HLT : S_FETCH);
+        // ADCW/SUBW need a 2nd EXEC cycle for the high byte of the pair;
+        // IN needs a wait state for the input port to settle.  Everything
+        // else finishes here.
+        nstate = is_in ? S_IN
+                       : (is_ext && (xsub == 4'hC || xsub == 4'hD))
+                           ? S_EXEC2
+                           : (is_hlt ? S_HLT : S_FETCH);
+      end
+
+      // ---- IN wait state: capture the data and write the register ----
+      // `in_port` has been stable since S_OPR/S_EXEC (the port came from the
+      // operand byte) and `in_data` is sampled here, at least two clock edges
+      // after the port was selected.  This is enough for an external
+      // two-FF synchronizer, and avoids the one-cycle race of the old design
+      // (a peripheral decoding in_port used to see the previous port).
+      S_IN: begin
+        sel_in = 1'b1;
+        rf_we  = 1'b1;
+        if (instr == 8'hF9) begin
+          ind   = 1'b1;  // rd comes from operand[3:2]
+          io_op = 1'b1;  // keep in_port driven while in_data is sampled
+        end
+        nstate = S_FETCH;
       end
 
       // ---- Second execute cycle: high byte of ADCW/SUBW ----
@@ -621,7 +652,7 @@ module control (
         nstate = S_HLT;
       end
 
-      // state is 3 bits but only 0..6 exist; state 7 is unreachable.
+      // All eight encodings are used (S_IN = 7); this default is unreachable.
       /* verilator coverage_off */
       default: nstate = S_FETCH;
       /* verilator coverage_on */

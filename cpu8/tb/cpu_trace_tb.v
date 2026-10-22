@@ -60,14 +60,16 @@ module cpu_trace_tb;
   // An instruction "retires" on the rising edge in which S_EXEC is executed
   // (state 3'd2).  It is detected on the following negedge, when the registers
   // and flags are already updated.  Pair ops (ADCW/SUBW) spend one extra
-  // cycle in S_EXEC2 (3'd6), so their sample is deferred one negedge further.
+  // cycle in S_EXEC2 (3'd6), and IN spends one extra cycle in S_IN (3'd7),
+  // so for them the sample is deferred one negedge further.
   reg [2:0] st_d = 3'd0;
-  localparam [2:0] S_EXEC = 3'd2, S_EXEC2 = 3'd6;
+  localparam [2:0] S_EXEC = 3'd2, S_EXEC2 = 3'd6, S_IN = 3'd7;
   always @(negedge clk) begin
     if (rst) begin
       st_d <= dut.u_ctrl.state;
     end else begin
-      if ((st_d == S_EXEC && dut.u_ctrl.state != S_EXEC2) || st_d == S_EXEC2) begin
+      if ((st_d == S_EXEC && dut.u_ctrl.state != S_EXEC2 &&
+           dut.u_ctrl.state != S_IN) || st_d == S_EXEC2 || st_d == S_IN) begin
         $display("  %02h   %02h   %02h   %02h   %02h   %02h   %b %b %b %b  %02h%s", trace_pc,
                  dut.IR, dut.u_rf.regs[0], dut.u_rf.regs[1], dut.u_rf.regs[2], dut.u_rf.regs[3],
                  dut.flag_z, dut.flag_c, dut.flag_n, dut.flag_v, dut.SP, out_valid ? "   OUT" : "");

@@ -77,6 +77,7 @@ module cpu #(
   wire pc_from_vec, flag_i_set, flag_i_clear;
   wire flag_save, flag_restore;
   wire sel_in, io_op;
+  wire io_op_fetch;
 
   // Current instruction: always from the IR register.  Decoding from
   // IR (and not from RAM) avoids a combinational loop control <-> RAM.
@@ -147,6 +148,7 @@ module cpu #(
       .flag_restore(flag_restore),
       .sel_in(sel_in),
       .io_op(io_op),
+      .io_op_fetch(io_op_fetch),
       .halted(halted)
   );
 
@@ -182,8 +184,11 @@ module cpu #(
   // ------------------------------------------------------------------
   //  I/O ports.  The ported form (0xF8 OUT / 0xF9 IN) takes the
   //  port from `operand[1:0]`; the 1-byte ones (OUT/IN) use port 0.
+  //  `io_op_fetch` exposes the port already in S_OPR, while the
+  //  operand byte is still on the RAM bus, so it is stable well
+  //  before the S_IN capture edge.
   // ------------------------------------------------------------------
-  wire [1:0] io_port = io_op ? operand[1:0] : 2'b00;
+  wire [1:0] io_port = io_op_fetch ? ram_rdata[1:0] : io_op ? operand[1:0] : 2'b00;
   assign in_port = io_port;
 
   // ------------------------------------------------------------------

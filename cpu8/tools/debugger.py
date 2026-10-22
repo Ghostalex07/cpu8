@@ -5,10 +5,11 @@ It loads a program (``.asm`` or ``.hex``), runs it instruction by instruction on
 ``tools/iss.py`` and lets you control and inspect it like a small ``gdb``:
 breakpoints, watchpoints, register/memory dumps and on-the-fly disassembly.
 
-It also reports the **cycle** count: it models the 7-state FSM of
+It also reports the **cycle** count: it models the 8-state FSM of
 ``rtl/control.v`` (FETCH + EXEC = 2 cycles for 1-byte instructions,
-FETCH + OPR + EXEC = 3 for 2-byte ones, and 2 cycles per interrupt serviced), so
-it can be used to measure the CPI of a program.
+FETCH + OPR + EXEC = 3 for 2-byte ones, one extra S_IN wait state for ``IN``,
+and 2 cycles per interrupt serviced), so it can be used to measure the CPI of
+a program.
 
 Usage::
 
@@ -351,11 +352,15 @@ class Debugger:
     def _cycles(self) -> int:
         # Cycles model control.v's FSM: one byte = 2 cycles (FETCH+EXEC) and
         # each additional fetched byte adds one (S_OPR, S_OPR2).  ADCW/SUBW
-        # add a 2nd EXEC cycle (S_EXEC2) for the high byte of the pair.
+        # add a 2nd EXEC cycle (S_EXEC2) for the high byte of the pair, and IN
+        # adds the S_IN wait state used for the input-port handshake.
         n = _LENGTH(self.iss.mem, self.iss.PC) + 1
         mem, pc = self.iss.mem, self.iss.PC
+        first = mem[pc]
+        if first == 0xF9 or ((first >> 4) == 0xE and (first & 3) == 1):
+            n += 1
         if (
-            mem[pc] == 0xFA
+            first == 0xFA
             and pc + 1 < len(mem)
             and ((mem[pc + 1] >> 4) in (iss_mod.XOP_ADCW, iss_mod.XOP_SUBW))
         ):

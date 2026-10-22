@@ -49,7 +49,9 @@
   iCEstick only `out_data[4:0]` is visible on the five LEDs.
 - The matching input side has four ports as well: the 1-byte `IN rd` form reads
   port 0, `IN n,rd` reads port `n`, the environment presents the value on
-  `in_data` and the CPU drives `in_port` while the instruction executes. On the
+  `in_data` and the CPU drives `in_port` while the instruction executes. For the
+  ported form `in_port` is already valid from the operand fetch, one clock before
+  execution, and `in_data` is captured one wait cycle later (§10.9). On the
   iCEstick all ports read the same byte from the Pmod connector.
 - See §10.9 for the encodings and the exact handshake.
 
@@ -629,6 +631,16 @@ the ported **2-byte** form selects the port in the 2 low bits of the second byte
 signal (2 bits, the port of the last `OUT`) and **receives** `in_data` (8 bits); so
 the environment knows which port it must present on `in_data`, the CPU also drives
 `in_port` (2 bits) during the `IN` instruction (see `rtl/cpu.v`).
+
+**Handshake.** `IN` takes one extra wait state (`S_IN`): after the operand fetch,
+`in_port` is driven for `S_EXEC` *and* `S_IN`, and `in_data` is sampled only at the
+end of `S_IN`. The port is therefore stable for at least two clock edges before
+the value is captured, which is enough for an external decoder plus the two-FF
+synchronizer in `fpga/top.v`. `IN rd` (port 0) takes 3 cycles
+(`FETCH + EXEC + S_IN`) and `IN n,rd` takes 4 (`FETCH + OPR + EXEC + S_IN`).
+A peripheral may change its output as soon as it sees `in_port`; the sampled
+value must still be stable at the end of `S_IN`. For the ported form `in_port`
+is already valid during `S_OPR`, while the operand byte is on the RAM bus.
 
 E.g.: `OUT A`=`E0`, `IN A`=`E1`, `OUT 2, B`=`F8 06`, `IN 3, D`=`F9 0F`.
 Example program: `programs/inout.asm` (the testbench presents `0x10+n` on

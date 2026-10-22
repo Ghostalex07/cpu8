@@ -43,8 +43,9 @@ XOP_TEST, XOP_PUSHF, XOP_POPF = 0x9, 0xA, 0xB
 XOP_ADCW, XOP_SUBW = 0xC, 0xD
 XOP_RETI = 0xE
 
-# FSM states (only to document detection; the ISS is not cycle-accurate).
-S_FETCH, S_OPR, S_EXEC, S_IRQ, S_HLT = 0, 1, 2, 3, 4
+# FSM state encodings (same as rtl/control.v; documentation only: the ISS is
+# not cycle-accurate).
+S_FETCH, S_OPR, S_EXEC, S_IRQ, S_HLT, S_OPR2, S_EXEC2, S_IN = range(8)
 
 
 def needs_operand(instr: int) -> bool:

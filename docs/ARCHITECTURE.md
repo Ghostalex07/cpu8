@@ -37,8 +37,9 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 | `0` | `FETCH` | Read the instruction from `ram[PC]` → load `IR`. Increment `PC`. Decide the length from the fetched byte: 1 byte → `EXEC`, 2 bytes → `OPR`. If `I=1` and `irq=1`, go to `IRQ`. |
 | `1` | `OPR` | Read the operand from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. For a prefixed (`0xFA`) instruction this byte is the extended opcode → load `xop`; if its sub-operation is `LDW`/`STW` (7/8) go to `OPR2`, otherwise to `EXEC`. |
 | `5` | `OPR2` | Read the 3rd byte (the displacement of `LDW`/`STW`) from `ram[PC]` → load `operand`. Increment `PC`. Move to `EXEC`. |
-| `2` | `EXEC` | Execute the operation according to the decode (move data, ALU, branches, stack, I/O). Update flags/registers/RAM as appropriate. For prefixed instructions the sub-operation `xop[7:4]` selects the operation and `xop[3:2]`/`xop[1:0]` are the `rd`/`rs` indices. For `ADCW`/`SUBW` (xop C/D) the FSM then moves to `EXEC2`. |
+| `2` | `EXEC` | Execute the operation according to the decode (move data, ALU, branches, stack, I/O). Update flags/registers/RAM as appropriate. For prefixed instructions the sub-operation `xop[7:4]` selects the operation and `xop[3:2]`/`xop[1:0]` are the `rd`/`rs` indices. For `ADCW`/`SUBW` (xop C/D) the FSM then moves to `EXEC2`; for `IN` it moves to `IN`. |
 | `6` | `EXEC2` | Execute the **high byte** of a 16-bit pair operation (`ADCW`/`SUBW`): `pair16_hi` selects the high registers of the pair, `alu_cin` comes from `c16` (the low byte's carry, inverted for the `SUBW` borrow) and the 16-bit flags merge (`Z = z16 & alu_z`). Return to `FETCH`. |
+| `7` | `IN` | Wait state for `IN`: `in_port` was already driven in `OPR`/`EXEC`, and `in_data` is captured and written to `rd` here. The wait gives an external peripheral (and the two-FF synchronizer in `fpga/top.v`) time to settle before the sample. Return to `FETCH`. |
 | `3` | `IRQ` | Handle the interrupt: save PC on the stack (PUSH), clear `I`, jump to `IRQ_VECTOR`. Return to FETCH. |
 | `4` | `HLT` | Halted state. The CPU stays in HLT until `reset`. |
 
@@ -64,12 +65,14 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
      and the FSM then moves to **EXEC2** instead of `FETCH`
 5. **EXEC2** (only for `ADCW`/`SUBW`): compute the **high byte** chaining the
    carry/borrow of the low byte, write it and merge the 16-bit flags
-6. The next cycle returns to **FETCH**
+6. **IN** (only for `IN`): capture `in_data` and write `rd` after one wait cycle
+7. The next cycle returns to **FETCH**
 
 Cycle counts: **2** for 1-byte instructions (`FETCH + EXEC`), **3** for 2-byte ones
 (`FETCH + OPR + EXEC`) and **4** for the 3-byte `LDW`/`STW`
 (`FETCH + OPR + OPR2 + EXEC`) as well as for the pair operations `ADCW`/`SUBW`
-(`FETCH + OPR + EXEC + EXEC2`); an interrupt costs **2** cycles: the `FETCH`
+(`FETCH + OPR + EXEC + EXEC2`); `IN` adds its `IN` wait state (3 cycles for the
+1-byte form, 4 for the ported one); an interrupt costs **2** cycles: the `FETCH`
 that detects it (no instruction is fetched) plus `S_IRQ`.
 
 ## ALU
@@ -153,10 +156,11 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
   `step`/`next` (which steps *over* a `CALL`), `continue`, `break` (address or
   label), `watch` (registers, flags or a memory cell), `mem`, `disasm`, `trace`,
   `out`, `reset`, `labels`; printed addresses carry their `.asm` symbol. It also
-  reports cycles: it models the 7-state FSM of `rtl/control.v`
+  reports cycles: it models the 8-state FSM of `rtl/control.v`
   (`FETCH + EXEC` = 2 cycles for 1-byte instructions, `FETCH + OPR + EXEC` = 3 for
   2-byte ones, `FETCH + OPR + OPR2 + EXEC` = 4 for the 3-byte `LDW`/`STW`,
-  `FETCH + OPR + EXEC + EXEC2` = 4 for the pair ops `ADCW`/`SUBW`, and
+  `FETCH + OPR + EXEC + EXEC2` = 4 for the pair ops `ADCW`/`SUBW`,
+  `FETCH + EXEC + IN` = 3 (4 ported) for `IN`, and
   2 cycles per interrupt serviced: the `FETCH` that detects the request
   without fetching, plus `S_IRQ`), so it can be used to measure a program's CPI. Usage: `make debug PROG=programs/<name>` or
   `python3 tools/debugger.py programs/<name>.asm`; its tests live in

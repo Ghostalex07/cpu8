@@ -1,9 +1,9 @@
 // ============================================================================
 //  control_fv.sv - Formal properties of the control FSM (rtl/control.v)
 //
-//  The harness checks the documented sequential behaviour of the 7-state FSM
-//  (S_FETCH=0, S_OPR=1, S_EXEC=2, S_IRQ=3, S_HLT=4, S_OPR2=5, S_EXEC2=6).
-//  Encoding 7 is reserved and must never be produced.
+//  The harness checks the documented sequential behaviour of the 8-state FSM
+//  (S_FETCH=0, S_OPR=1, S_EXEC=2, S_IRQ=3, S_HLT=4, S_OPR2=5, S_EXEC2=6,
+//  S_IN=7).
 //
 //  Initialisation: the only assumption is `initial assume (rst)`, i.e. the
 //  trace starts with a synchronous reset applied at time 0.  No constraint is
@@ -49,7 +49,7 @@ module control_fv (
     wire       pc_from_mem, sel_ram_pc, ind, idx, ext, xop_ld, rf_we2;
     wire       addr_alu, flag_ld, sel_ram_fl, pair16_ld, pair16_hi;
     wire       pc_from_vec, flag_i_set, flag_i_clear;
-    wire       flag_save, flag_restore, sel_in, io_op;
+    wire       flag_save, flag_restore, sel_in, io_op, io_op_fetch;
 
     // Filled in after flattening (see control.sby).
     wire [2:0] state_obs;
@@ -73,7 +73,7 @@ module control_fv (
         .pc_from_vec(pc_from_vec), .flag_i_set(flag_i_set),
         .flag_i_clear(flag_i_clear), .flag_save(flag_save),
         .flag_restore(flag_restore), .sel_in(sel_in), .io_op(io_op),
-        .halted(halted)
+        .io_op_fetch(io_op_fetch), .halted(halted)
     );
 
     // --- State encodings (mirror rtl/control.v) ---
@@ -84,12 +84,15 @@ module control_fv (
     localparam [2:0] S_HLT   = 3'd4;
     localparam [2:0] S_OPR2  = 3'd5;
     localparam [2:0] S_EXEC2 = 3'd6;
+    localparam [2:0] S_IN    = 3'd7;
 
     // --- Instruction decode helpers (same definitions as the RTL) ---
     wire [3:0] opcode = instr[7:4];
     wire [3:0] fop    = fetched[7:4];
     wire       is_ext = (instr == 8'hFA);
     wire       is_hlt = (instr == 8'hF0);
+    wire       is_in  = (instr == 8'hF9) ||
+                        ((opcode == 4'hE) && (instr[1:0] == 2'b01));
     wire       needs_operand =
         (fop == 4'h1) || (fop == 4'h3) || (fop == 4'h4) ||
         (fop == 4'hC) || (fop == 4'hD) ||
@@ -108,15 +111,8 @@ module control_fv (
 
     // ===============================================================
     // Combinational invariants (hold for every reachable state and
-    // every input). State 7 is reserved and unreachable: the state
-    // register has no init, and Yosys models it as 0 at time 0.
+    // every input).  All eight 3-bit encodings are valid states.
     // ===============================================================
-
-    // The next-state function never produces the reserved encoding.
-    always @* assert (nstate_obs != 3'd7);
-
-    // A corrupted state recovers to S_FETCH.
-    always @* assert (state_obs != 3'd7 || nstate_obs == S_FETCH);
 
     // halted is exactly "the FSM is in S_HLT".
     always @* assert (halted == (state_obs == S_HLT));
@@ -143,8 +139,12 @@ module control_fv (
     always @* assert (!pc_from_vec  || state_obs == S_IRQ);
     always @* assert (!flag_save    || state_obs == S_IRQ);
     always @* assert (!flag_restore || state_obs == S_EXEC);
-    always @* assert (!rf_we        || state_obs == S_EXEC || state_obs == S_EXEC2);
+    always @* assert (!rf_we        || state_obs == S_EXEC || state_obs == S_EXEC2 ||
+                                        state_obs == S_IN);
     always @* assert (!rf_we2       || state_obs == S_EXEC);
+    always @* assert (!sel_in       || state_obs == S_IN);
+    always @* assert (!io_op        || state_obs == S_EXEC || state_obs == S_IN);
+    always @* assert (!io_op_fetch  || state_obs == S_OPR);
     always @* assert (!ram_we       || state_obs == S_EXEC || state_obs == S_IRQ);
     always @* assert (!sp_dec       || state_obs == S_EXEC || state_obs == S_IRQ);
     always @* assert (!sp_inc       || state_obs == S_EXEC);
@@ -168,9 +168,6 @@ module control_fv (
 
             // --- Reset (synchronous, active high) ---
             if ($past(rst)) assert (state_obs == S_FETCH);
-
-            // --- Reachable state set: 7 is never entered ---
-            assert (state_obs != 3'd7);
 
             // --- S_HLT stutters until reset ---
             if ($past(state_obs == S_HLT) && !$past(rst))
@@ -203,9 +200,12 @@ module control_fv (
             // S_OPR2: always EXEC.
             if (state_obs == S_OPR2) assert (nstate_obs == S_EXEC);
 
-            // S_EXEC: EXEC2 for ADCW/SUBW, HLT for 0xF0, otherwise FETCH.
+            // S_EXEC: IN goes to its wait state, ADCW/SUBW to EXEC2,
+            // HLT stops, otherwise FETCH.
             if (state_obs == S_EXEC) begin
-                if (is_ext && (xsub == 4'hC || xsub == 4'hD))
+                if (is_in)
+                    assert (nstate_obs == S_IN);
+                else if (is_ext && (xsub == 4'hC || xsub == 4'hD))
                     assert (nstate_obs == S_EXEC2);
                 else if (is_hlt)
                     assert (nstate_obs == S_HLT);
@@ -213,7 +213,15 @@ module control_fv (
                     assert (nstate_obs == S_FETCH);
                 assert (nstate_obs == S_FETCH ||
                         nstate_obs == S_HLT   ||
-                        nstate_obs == S_EXEC2);
+                        nstate_obs == S_EXEC2 ||
+                        nstate_obs == S_IN);
+            end
+
+            // S_IN: always FETCH, captures in_data and writes rd.
+            if (state_obs == S_IN) begin
+                assert (nstate_obs == S_FETCH);
+                assert (sel_in && rf_we);
+                if (instr == 8'hF9) assert (io_op && ind);
             end
 
             // S_EXEC2: always FETCH.
@@ -243,6 +251,7 @@ module control_fv (
         if (f_past_valid && state_obs == S_OPR2) cover (1'b1);
         if (f_past_valid && state_obs == S_EXEC) cover (1'b1);
         if (f_past_valid && state_obs == S_EXEC2) cover (1'b1);
+        if (f_past_valid && state_obs == S_IN) cover (1'b1);
         if (f_past_valid && state_obs == S_IRQ) cover (1'b1);
         if (f_past_valid && state_obs == S_HLT) cover (1'b1);
 
@@ -258,6 +267,10 @@ module control_fv (
         if (f_past_valid && state_obs == S_IRQ   && nstate_obs == S_FETCH)
             cover (1'b1);
         if (f_past_valid && state_obs == S_EXEC  && nstate_obs == S_EXEC2)
+            cover (1'b1);
+        if (f_past_valid && state_obs == S_EXEC  && nstate_obs == S_IN)
+            cover (1'b1);
+        if (f_past_valid && state_obs == S_IN    && nstate_obs == S_FETCH)
             cover (1'b1);
         if (f_past_valid && state_obs == S_EXEC  && nstate_obs == S_HLT)
             cover (1'b1);
