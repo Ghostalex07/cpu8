@@ -31,16 +31,17 @@
 `default_nettype none
 
 module alu (
-    input  wire [3:0] op,   // operation (see the localparams below)
-    input  wire       sh,   // SHL/SHR direction; also ADC/SBC and ROL/ROR select
-    input  wire [7:0] a,    // operand 1 (usually rd)
-    input  wire [7:0] b,    // operand 2 (rs or immediate)
-    input  wire       cin,  // carry/borrow in (ADC/SBC) and C for ROL/ROR
-    output reg  [7:0] y,    // result
-    output reg        c,    // flag C: carry (add) / no-borrow (subtract)
-    output reg        v,    // flag V: SIGNED overflow (two's complement)
-    output wire       z,    // flag Z: result is zero
-    output wire       n     // flag N: copy of bit 7 (sign in two's complement)
+    input  wire [3:0] op,      // operation (see the localparams below)
+    input  wire       sh,      // SHL/SHR direction; also ADC/SBC and ROL/ROR select
+    input  wire [7:0] a,       // operand 1 (usually rd)
+    input  wire [7:0] b,       // operand 2 (rs or immediate)
+    input  wire       cin,     // carry/borrow in (ADC/SBC) and C for ROL/ROR
+    output reg  [7:0] y,       // result
+    output wire [7:0] y_addr,  // dedicated a+b, used for RAM addresses
+    output reg        c,       // flag C: carry (add) / no-borrow (subtract)
+    output reg        v,       // flag V: SIGNED overflow (two's complement)
+    output wire       z,       // flag Z: result is zero
+    output wire       n        // flag N: copy of bit 7 (sign in two's complement)
 );
 
   // Operation codes. They intentionally match the ISA opcode.
@@ -66,9 +67,14 @@ module alu (
   //   ADD:     a + b + 0
   //   SUB/CMP: a + ~b + 1   (the same adder with b inverted and cin = 1).
   // This way synthesis implements a single carry chain instead of two.
-  wire        es_resta = (op == ALU_SUB) || (op == ALU_CMP);
-  wire [ 8:0] b_efectivo = es_resta ? {1'b0, ~b} : {1'b0, b};
-  wire [ 8:0] suma = {1'b0, a} + b_efectivo + {8'b0, es_resta};
+  wire       es_resta = (op == ALU_SUB) || (op == ALU_CMP);
+  wire [8:0] b_efectivo = es_resta ? {1'b0, ~b} : {1'b0, b};
+  wire [8:0] suma = {1'b0, a} + b_efectivo + {8'b0, es_resta};
+
+  // Dedicated address adder: LDW/STW only need a+b for ram_addr.  Keeping
+  // this path out of the `y` mux removes the multiplier/divider from the
+  // RAM-address timing cone.
+  assign y_addr = a + b;
 
   // ADC/SBC: the same 9-bit adder with the incoming carry.  SBC (sh=1) is
   // a - b - cin = a + ~b + (1 - cin), that is, b inverted and cin inverted.

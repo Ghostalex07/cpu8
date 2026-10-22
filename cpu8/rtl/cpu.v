@@ -88,7 +88,7 @@ module cpu #(
   // ------------------------------------------------------------------
   wire [7:0] rf_rdata_rd;  // read of register rd (port 1)
   wire [7:0] rf_rdata_rs;  // read of register rs (port 2)
-  wire [7:0] alu_a, alu_b, alu_y;
+  wire [7:0] alu_a, alu_b, alu_y, alu_y_addr;
   wire alu_c, alu_z, alu_n, alu_v;
   wire [7:0] ram_addr, ram_wdata, ram_rdata;
   wire [7:0] pc_q;
@@ -163,16 +163,17 @@ module cpu #(
   wire alu_cin = pair16_hi ? (alu_sh ? ~c16 : c16) : flag_c;
 
   alu u_alu (
-      .op (alu_op),
-      .sh (alu_sh),
-      .a  (alu_a),
-      .b  (alu_b),
+      .op(alu_op),
+      .sh(alu_sh),
+      .a(alu_a),
+      .b(alu_b),
       .cin(alu_cin),
-      .y  (alu_y),
-      .c  (alu_c),
-      .v  (alu_v),
-      .z  (alu_z),
-      .n  (alu_n)
+      .y(alu_y),
+      .y_addr(alu_y_addr),
+      .c(alu_c),
+      .v(alu_v),
+      .z(alu_z),
+      .n(alu_n)
   );
 
   // ------------------------------------------------------------------
@@ -198,7 +199,7 @@ module cpu #(
   // ------------------------------------------------------------------
   wire [7:0] sp_addr = sp_inc ? (SP + 8'd1) : SP;  // POP/RET read SP+1
 
-  assign ram_addr  = addr_alu ? alu_y
+  assign ram_addr  = addr_alu ? alu_y_addr
                      : ind ? rf_rdata_rs
                      : idx ? (rf_rdata_rs + operand)
                      : (pc_as_addr ? pc_q : (sp_as_addr ? sp_addr : operand));

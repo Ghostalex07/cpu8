@@ -9,8 +9,8 @@ check.
 
 | Asset | Program | Size | SHA-256 |
 |---|---|---|---|
-| `top.bin` | `countdown` (default demo) | 32,220 B | `c8e861a9e22afad891c54555bc8a4fdd9827afffd23cef7dd3c96f25e5eb7f1f` |
-| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `6f01a07ce1707387ae9e1bf4f791d7d5acff97383bf3bf2d7e867ee9473c3fb0` |
+| `top.bin` | `countdown` (default demo) | 32,220 B | `2998f31306b869c23f69aceb80f22b5949f9daf86ea2d92ee25657dd14c29999` |
+| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `8391c9e67c0056d5338f359a4165c4e0590c5f1acd3a10cbe9b8f5318de762ca` |
 
 Each bitstream has a matching `.sha256` file. `SHA256SUMS` contains both lines
 and can be checked in one command.

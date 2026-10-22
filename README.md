@@ -184,9 +184,9 @@ The project relies on several layers of checking, all runnable locally:
 - **Co-simulation** with Verilator (`make verilator`).
 - **Formal verification** (`make formal`): SymbiYosys proves, with the `z3`
   solver, that the ALU matches an exhaustive reference model for every
-  operation/operand (result and all four flags) and that the control FSM never
-  reaches the reserved state `7`. The `formal/` directory holds the `.sby` and
-  `_fv.sv` files; the job runs in CI too.
+  operation/operand (result and all four flags) and that the control FSM only
+  follows its documented state transitions. The `formal/` directory holds the
+  `.sby` and `_fv.sv` files; the job runs in CI too.
 - **Coverage** of the RTL with `make coverage`: Verilator instruments a separate
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under

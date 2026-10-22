@@ -23,6 +23,7 @@ module alu_tb;
 
   // DUT outputs
   wire [7:0] y;
+  wire [7:0] y_addr;
   wire c, v, z, n;
 
   integer errors = 0;
@@ -32,16 +33,17 @@ module alu_tb;
 
   // Instance of the module under test
   alu dut (
-      .op (op),
-      .sh (sh),
-      .a  (a),
-      .b  (b),
+      .op(op),
+      .sh(sh),
+      .a(a),
+      .b(b),
       .cin(cin),
-      .y  (y),
-      .c  (c),
-      .v  (v),
-      .z  (z),
-      .n  (n)
+      .y(y),
+      .y_addr(y_addr),
+      .c(c),
+      .v(v),
+      .z(z),
+      .n(n)
   );
 
   // ------------------------------------------------------------------
@@ -89,6 +91,11 @@ module alu_tb;
         $display(
             "  FAIL op=%0d sh=%b a=%02h b=%02h -> y=%02h c=%b v=%b z=%b n=%b  (expected y=%02h c=%b v=%b z=%b n=%b)",
             top, tsh, va, vb, y, c, v, z, n, ey, ec, ev, ez, en);
+      end
+      if (y_addr !== (va + vb)) begin
+        errors = errors + 1;
+        $display("  FAIL address adder a=%02h b=%02h -> %02h (expected %02h)", va, vb, y_addr,
+                 (va + vb));
       end
     end
   endtask

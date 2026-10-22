@@ -90,10 +90,11 @@ so `build/top.bin` is always the default demo and matches the committed
 `cpu8/fpga/top.bin.sha256`.
 
 The area/timing report expects the pinned YoWASP toolchain (yosys 0.69 /
-nextpnr 0.11). The current design uses **862/1280 logic cells (67 %)** and closes
-timing at **12.81 MHz** for the 12 MHz clock. The distro nextpnr 0.6 places the
-same design at 11.35 MHz and fails the budget, so `make fpga-check` uses the
-pinned wheels in CI.
+nextpnr 0.11). The current design uses **865/1280 logic cells (68 %)** and closes
+timing at **25.32 MHz** with nextpnr constrained to 16 MHz, leaving margin over
+the board's 12 MHz clock. The distro nextpnr 0.6 places the same design at
+11.35 MHz and fails the budget, so `make fpga-check` uses the pinned wheels in
+CI.
 
 ## Verify before flashing
 

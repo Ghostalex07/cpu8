@@ -20,12 +20,16 @@ module alu_fv (
 );
 
     wire [7:0] y;
+    wire [7:0] y_addr;
     wire       c, v, z, n;
 
     alu dut (
         .op(op), .sh(sh), .a(a), .b(b), .cin(cin),
-        .y(y), .c(c), .z(z), .n(n), .v(v)
+        .y(y), .y_addr(y_addr), .c(c), .z(z), .n(n), .v(v)
     );
+
+    // The dedicated address adder is always a+b (only its low byte matters).
+    always @* assert (y_addr == a + b);
 
     reg [7:0]  ry;
     reg        rc, rv;

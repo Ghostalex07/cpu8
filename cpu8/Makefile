@@ -333,7 +333,7 @@ fpga: dirs
 	echo "=== FPGA: synthesis (yosys) ==="; \
 	$(YOSYS) -p "read_verilog -DRAM_INIT $(wildcard $(RTL_DIR)/*.v) $(FPGA_DIR)/top.v; synth_ice40 -top top -json $(BUILD)/top.json"; \
 	echo "=== FPGA: place & route (nextpnr) ==="; \
-	$(NEXTPNR) --hx1k --package tq144 --json $(BUILD)/top.json \
+	$(NEXTPNR) --hx1k --package tq144 --freq 16 --json $(BUILD)/top.json \
 	  --pcf $(FPGA_DIR)/icestick.pcf --asc $(BUILD)/top.asc; \
 	echo "=== FPGA: bitstream (icepack) ==="; \
 	$(ICEPACK) $(BUILD)/top.asc $(BUILD)/top.bin; \
