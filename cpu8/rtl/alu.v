@@ -68,8 +68,8 @@ module alu (
   //   SUB/CMP: a + ~b + 1   (the same adder with b inverted and cin = 1).
   // This way synthesis implements a single carry chain instead of two.
   wire       es_resta = (op == ALU_SUB) || (op == ALU_CMP);
-  wire [8:0] b_efectivo = es_resta ? {1'b0, ~b} : {1'b0, b};
-  wire [8:0] suma = {1'b0, a} + b_efectivo + {8'b0, es_resta};
+  wire [7:0] b_efectivo = es_resta ? ~b : b;
+  wire [8:0] suma = {1'b0, a} + {1'b0, b_efectivo} + {8'b0, es_resta};
 
   // Dedicated address adder: LDW/STW only need a+b for ram_addr.  Keeping
   // this path out of the `y` mux removes the multiplier/divider from the
@@ -78,9 +78,9 @@ module alu (
 
   // ADC/SBC: the same 9-bit adder with the incoming carry.  SBC (sh=1) is
   // a - b - cin = a + ~b + (1 - cin), that is, b inverted and cin inverted.
-  wire [ 8:0] b_adcsbc = sh ? {1'b0, ~b} : {1'b0, b};
-  wire [ 8:0] cin_adcsbc = sh ? {8'b0, ~cin} : {8'b0, cin};
-  wire [ 8:0] suma_adcsbc = {1'b0, a} + b_adcsbc + cin_adcsbc;
+  wire [ 7:0] b_adcsbc = sh ? ~b : b;
+  wire        cin_adcsbc = sh ? ~cin : cin;
+  wire [ 8:0] suma_adcsbc = {1'b0, a} + {1'b0, b_adcsbc} + {8'b0, cin_adcsbc};
 
   // NEG: 0 - a with the same convention (C=1 only when a=0, i.e. no borrow).
   wire [ 8:0] suma_neg = {1'b0, 8'h00} + {1'b0, ~a} + 9'd1;

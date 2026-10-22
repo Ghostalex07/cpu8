@@ -182,7 +182,6 @@ module control (
   wire is_inc = (opcode == OP_GRP0) && (rd == 2'b00);
   wire is_dec = (opcode == OP_GRP0) && (rd == 2'b01);
   wire is_push = (opcode == OP_GRP0) && (rd == 2'b10);
-  wire is_pop = (opcode == OP_GRP0) && (rd == 2'b11);
 
   // HLT is exactly 0xF0: group 0xF includes RET/EI/DI/indirect.
   wire is_hlt = (instr == 8'hF0);
@@ -520,7 +519,10 @@ module control (
                 sel_ram_rs = 1'b1;  // data = rs
                 sp_as_addr = 1'b1;
                 sp_dec     = 1'b1;
-              end else if (is_pop) begin
+              end else begin
+                // OP_GRP0 with rd != 00/01/10: rd == 11 is POP, the only
+                // remaining encoding, so this branch is not reachable for
+                // another suboperation.
                 rf_we      = 1'b1;
                 rf_waddr   = rs;
                 sel_mem    = 1'b1;  // data = RAM

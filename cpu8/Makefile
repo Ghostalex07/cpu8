@@ -243,10 +243,13 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/irq.asm; \
 	$(VL_DIR)/Vcpu_sim +hex=$(PROG_DIR)/irq.hex +exp=$(PROG_DIR)/irq.ref +irq=1
 
-## --- Coverage (Phase 12c): line/toggle coverage of the RTL with Verilator ---
-## Builds a SEPARATE instrumented model (--coverage), runs the demo programs
-## writing one .dat per run and then merges everything into an annotated
-## report: build/verilator-cov/coverage.info and build/verilator-cov/report/.
+## --- Coverage: line plus toggle/branch (BRDA) coverage of the RTL with Verilator ---
+## Builds a SEPARATE instrumented model: --coverage enables all Verilator
+## metrics (line, toggle, branch, expression and FSM).  It runs the demo
+## programs writing one .dat per run and then merges everything into an
+## annotated report: build/verilator-cov/coverage.info and
+## build/verilator-cov/report/.  coverage_report.py enforces both the line and
+## the BRDA budgets.
 # -Wno-COVERIGN only exists in recent Verilators: the distro's 5.020 (Ubuntu
 # 24.04) errors out on the unknown warning.  Probe for it so `make coverage`
 # also builds with the older toolchain used by the CI job.

@@ -204,7 +204,11 @@ module cpu #(
                      : idx ? (rf_rdata_rs + operand)
                      : (pc_as_addr ? pc_q : (sp_as_addr ? sp_addr : operand));
   // Flags byte pushed by PUSHF: bit0 C, bit1 Z, bit2 N, bit3 V, bit4 I.
+  // Bits 7..5 are reserved and always zero, so Verilator's toggle coverage can
+  // never see them change; exclude only this declaration from that metric.
+  /* verilator coverage_off */
   wire [7:0] flags_byte = {3'b000, flag_i, flag_v, flag_n, flag_z, flag_c};
+  /* verilator coverage_on */
 
   assign ram_wdata = sel_ram_fl ? flags_byte :
                        sel_ram_rs ? rf_rdata_rs
