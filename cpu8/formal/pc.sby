@@ -1,0 +1,14 @@
+[options]
+mode bmc
+depth 8
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/pc.v pc_fv.sv
+prep -top pc_fv
+
+[files]
+rtl/pc.v ../rtl/pc.v
+pc_fv.sv pc_fv.sv
