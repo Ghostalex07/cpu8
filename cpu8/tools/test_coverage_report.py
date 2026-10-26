@@ -58,9 +58,8 @@ def test_check_branches_rejects_a_report_below_the_minimum() -> None:
     assert failures and "94/100 branches" in failures[0]
 
 
-def test_check_branches_rejects_a_report_without_points() -> None:
-    failures = coverage_report.check_branches(0, 0)
-    assert failures and "no BRDA" in failures[0]
+def test_check_branches_skips_a_report_without_points() -> None:
+    assert coverage_report.check_branches(0, 0) == []
 
 
 def test_check_accepts_a_report_above_the_minimum() -> None:
@@ -95,11 +94,12 @@ def test_main_fails_below_the_branch_minimum(tmp_path, capsys) -> None:
     assert "below the 90.0 % minimum" in capsys.readouterr().err
 
 
-def test_main_rejects_a_report_without_branches(tmp_path, capsys) -> None:
+def test_main_skips_the_branch_gate_without_brda(tmp_path, capsys) -> None:
     path = tmp_path / "coverage.info"
     path.write_text("DA:1,1\n")
-    assert coverage_report.main(["--min", "50", str(path)]) == 1
-    assert "no BRDA" in capsys.readouterr().err
+    assert coverage_report.main(["--min", "50", str(path)]) == 0
+    out = capsys.readouterr().out
+    assert "branch gate skipped" in out
 
 
 def test_main_reports_a_missing_file(tmp_path) -> None:

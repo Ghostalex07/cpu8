@@ -7,6 +7,11 @@ coverage; ``BRDA`` records give the toggle/branch points (Verilator labels them
 executed.  The check fails (exit status 1) when either global percentage is
 below its minimum.
 
+Older Verilator releases (for example the 5.020 package in Ubuntu 24.04) do not
+emit ``BRDA`` records at all.  In that case the branch gate is skipped with a
+visible warning instead of failing: the line gate still applies, and the branch
+gate is enforced whenever the toolchain provides the data.
+
 Usage::
 
     python3 tools/coverage_report.py build/verilator-cov/coverage.info
@@ -72,9 +77,13 @@ def check(covered: int, total: int, minimum: float = MIN_LINE_PCT) -> list[str]:
 
 
 def check_branches(covered: int, total: int, minimum: float = MIN_BRANCH_PCT) -> list[str]:
-    """Return the BRDA budget failures (empty when it is good enough)."""
+    """Return the BRDA budget failures (empty when it is good enough).
+
+    A report without ``BRDA`` records comes from a Verilator build that does not
+    collect toggle/branch coverage; there is nothing to gate, so it is skipped.
+    """
     if total == 0:
-        return ["no BRDA: records found in the coverage report"]
+        return []
     pct = 100.0 * covered / total
     if pct + 1e-9 < minimum:
         return [f"{covered}/{total} branches ({pct:.1f} %) is below the {minimum:.1f} % minimum"]
@@ -140,6 +149,8 @@ def main(argv: list[str] | None = None) -> int:
             f"COVERAGE: {branch_covered}/{branch_total} branches "
             f"({branch_pct:.1f} %), minimum {minimum_branch:.1f} %"
         )
+    else:
+        print("COVERAGE: branch gate skipped: this Verilator build does not emit BRDA records")
     for failure in failures:
         print(f"coverage_report: {failure}", file=sys.stderr)
     return 1 if failures else 0

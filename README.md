@@ -67,8 +67,8 @@ make test        # module testbenches + assemble/simulate/compare programs/*.asm
 make pytools     # pytest: assembler, ISA table, disassembler, ISS, debugger, FPGA report and coverage report
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
-make coverage    # Verilator coverage report of the RTL (line/toggle/FSM)
-make formal      # SymbiYosys proofs of the ALU and the FSM
+make coverage    # Verilator line and toggle/branch coverage of the RTL
+make formal      # SymbiYosys proofs of the ALU, FSM, PC and register file
 make fpga-check  # FPGA synthesis + area/timing budget
 make fpga-repro  # fpga-check + verify the committed bitstream SHA-256
 make release-assets  # build the release bitstreams and their checksums
@@ -184,23 +184,29 @@ The project relies on several layers of checking, all runnable locally:
 - **Co-simulation** with Verilator (`make verilator`).
 - **Formal verification** (`make formal`): SymbiYosys proves, with the `z3`
   solver, that the ALU matches an exhaustive reference model for every
-  operation/operand (result and all four flags) and that the control FSM only
-  follows its documented state transitions. The `formal/` directory holds the
-  `.sby` and `_fv.sv` files; the job runs in CI too.
+  operation/operand (result and all four flags), that the control FSM only
+  follows its documented state transitions, and that the program counter and
+  register file honour their reset, load/write and hold rules. The `formal/`
+  directory holds the `.sby` and `_fv.sv` files; the job runs in CI too.
 - **Coverage** of the RTL with `make coverage`: Verilator instruments a separate
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under
   `build/verilator-cov/`. The target fails if line coverage drops below 95 %
-  (`tools/coverage_report.py`); the demo suite currently reaches 100 % (605/605
-  lines), with the two unreachable decoder defaults marked by justified
-  `coverage_off` pragmas.
+  or the BRDA toggle/branch coverage below 95.5 %
+  (`tools/coverage_report.py`); the demo suite currently reaches 100 % (613/613
+  lines) and 98.2 % of the BRDA points, with the structurally unreachable
+  decoder defaults and reserved flag bits marked by justified `coverage_off`
+  pragmas.
 - **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
   bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
-  job — fails if the design outgrows the area budget or misses the 12 MHz timing
-  target (`tools/fpga_report.py`). The job installs the pinned YoWASP wheels
-  instead of the distro packages: nextpnr 0.6 places the design at 11.35 MHz and
-  then aborts, so the area/timing budget would not be comparable. The iCEstick
-  has no user switches: `IN` reads the eight data pins of the Pmod connector
+  job — fails if the design outgrows the area budget or misses the 16 MHz timing
+  budget (`tools/fpga_report.py`); the current build uses 870/1280 logic cells
+  and closes at 25.45 MHz with nextpnr constrained to 16 MHz. The job installs
+  the pinned YoWASP wheels instead of the distro packages: they are the
+  toolchain the bitstreams are calibrated against, while the older distro
+  nextpnr does not close the 16 MHz constraint and would make the area/timing
+  budget incomparable. The iCEstick has no user switches: `IN` reads the eight
+  data pins of the Pmod connector
   (with internal pull-ups). `programs/pmod.asm` is an endless `IN A; OUT A; JMP`
   loop that shows the low five bits on the LEDs, so moving the Pmod inputs
   between 3.3 V and GND changes the pattern in real time; with nothing connected
@@ -235,10 +241,10 @@ The project relies on several layers of checking, all runnable locally:
 All of it runs in **GitHub Actions** on every push and *pull request*
 ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)): the `test` job runs
 the test suite (`make check`), `fmt` enforces the Verilog formatting, `formal`
-proves the ALU and the FSM with SymbiYosys, `fpga` synthesizes the design,
-enforces the area/timing budget, verifies the bitstream SHA-256 against the
-committed golden hash and publishes the `fpga-bitstream` artifact (30 days),
-and `coverage` enforces the 95 % line-coverage floor and publishes the
+proves the ALU, FSM, PC and register file with SymbiYosys, `fpga` synthesizes
+the design, enforces the area/timing budget, verifies the bitstream SHA-256
+against the committed golden hash and publishes the `fpga-bitstream` artifact
+(30 days), and `coverage` enforces the line and BRDA budgets and publishes the
 annotated report. A `difftest-long` job runs `make difftest-long
 COUNT=10000` nightly at 03:00 UTC, or on manual dispatch when the `long` input
 is ticked; it never runs on push or pull request.

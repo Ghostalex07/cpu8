@@ -3,7 +3,7 @@
 
 Parses the ``nextpnr-ice40`` output produced by ``make fpga`` for the
 iCEstick (iCE40HX1K) and fails if the design no longer fits comfortably or
-misses the 12 MHz timing target.  CI runs it after every synthesis.
+misses the 16 MHz timing target.  CI runs it after every synthesis.
 
 Usage::
 
@@ -25,7 +25,7 @@ import sys
 
 DEVICE_LC = 1280
 MAX_LC = 1024  # 80 % of the device, a hard area budget with headroom
-MIN_FMAX_MHZ = 12.0  # design clock target
+MIN_FMAX_MHZ = 16.0  # nextpnr frequency constraint and report target
 DEVICE_RAM = 16
 EXPECTED_RAM = 1  # ram.v must keep inferring one block RAM
 

@@ -365,10 +365,15 @@ make sim  PROG=programs/demo                          # assemble and simulate
 
 | Directive          | Effect                                                                |
 |--------------------|-----------------------------------------------------------------------|
-| `.equ NAME, expr`  | Defines a reusable constant (a number or a previous constant).        |
-| `.org expr`        | Sets the current address. If it moves forward, it fills with `00`; moving backwards is an error. |
+| `.equ NAME, expr`  | Defines a 16-bit constant (`-32768..65535`) from a number or an expression of previous constants. |
+| `.org expr`        | Sets the current 8-bit address. If it moves forward, it fills with `00`; moving backwards is an error. |
 | `.db item, ...`    | Emits bytes: numbers, labels or strings `"..."` (ASCII).              |
 | `.dw item, ...`    | Emits 16-bit little-endian words: numbers, labels or constants (2 bytes per item; no strings). |
+| `.nostack`         | Declares that the program never uses the stack, allowing the image to extend into the stack area. |
+
+Expressions are one or more *terms* joined by `+`/`-`; a term is a number, a
+label or a constant (for example `[base+3]` or `LEDS+1`). Every use in an 8-bit
+context must fit `0..255`; the error names the whole expression.
 
 Example:
 
@@ -399,10 +404,11 @@ accepted; commas inside the quotes do not separate fields.
 2. *Pass 2*: emits the bytes (`.org` fills with zeros) and resolves references to
    labels and constants (already known, even if defined further down).
 
-**Errors**: reported with the line number and a clear message (unknown mnemonic,
-invalid register, number out of range `0..255`, undefined or duplicate label,
-wrong number of operands, program larger than 256 bytes). The assembler exits
-with a non-zero status code if there is an error.
+**Errors**: reported with the line number, the offending source line and a clear
+message (unknown mnemonic, invalid register, number out of range `0..255`,
+undefined or duplicate label, wrong number of operands, program larger than 256
+bytes). The assembler exits with a non-zero status code if there is an error and
+removes a stale output `.hex` from a previous run.
 
 ## 9. Demo programs and automated verification (Phase 6)
 
@@ -714,7 +720,8 @@ fetches the 3rd byte, `cpu.v` keeps byte 2 of the prefix in an `xop` register,
 the register file has a **second write port** (so `SWAP` writes both registers in
 the same cycle) and the RAM address can be taken from the ALU result (the 9-bit
 `EA` of `LDW`/`STW`), and an `S_EXEC2` state that runs the high byte of the
-16-bit `ADCW`/`SUBW` pairs (the FSM therefore has 7 states).
+16-bit `ADCW`/`SUBW` pairs (the FSM therefore has 8 states, including the
+`S_IN` wait state of the input handshake).
 
 E.g.: `NEG A`=`FA 00`, `ADC A,B`=`FA 21`, `SWAP A,C`=`FA 42`, `ROL D`=`FA 5C`,
 `LDW A,[B+3]`=`FA 71 03`, `STW C,[D+4]`=`FA 8B 04`, `TEST A,B`=`FA 91`,

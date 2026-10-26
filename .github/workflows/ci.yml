@@ -166,7 +166,7 @@ jobs:
 
   # Synthesis needs the iCE40 toolchain and is slow, so it runs in its own job
   # instead of blocking the fast test suite.  The budget check fails the build
-  # if the design outgrows the iCE40HX1K or misses the 12 MHz timing target.
+  # if the design outgrows the iCE40HX1K or misses the 16 MHz timing target.
   fpga:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -189,10 +189,9 @@ jobs:
           cache: 'pip'
           cache-dependency-path: .github/requirements-fpga.txt
 
-      # The distro toolchain is not used here on purpose: nextpnr 0.6 (Ubuntu
-      # 24.04) places the design at 11.35 MHz, below the 12 MHz target, and then
-      # exits with an error.  The YoWASP wheels carry the same yosys/nextpnr
-      # the design is calibrated against, so the budget check is meaningful.
+      # The distro toolchain is not used here on purpose: the committed
+      # bitstreams are calibrated against the pinned YoWASP yosys/nextpnr
+      # versions, and distro nextpnr 0.6 does not close the 16 MHz constraint.
       # The versions are pinned in .github/requirements-fpga.txt to keep the
       # check reproducible; bump them deliberately when a new release is known
       # to still fit.
@@ -256,11 +255,12 @@ jobs:
             cpu8/build/fpga-pmod.log
           if-no-files-found: ignore
 
-  # Line/toggle/FSM coverage of the RTL over the demo programs.  `make coverage`
-  # enforces a 95 % line minimum (tools/coverage_report.py) and uploads the
-  # annotated report as an artifact so the numbers can be tracked over time.
-  # The exact percentage depends on the Verilator version (the runner has
-  # 5.020, a local install is typically newer); both are above the threshold.
+  # Line and BRDA toggle/branch coverage of the RTL over the demo programs.
+  # `make coverage` enforces a 95 % line minimum and a 95.5 % branch minimum
+  # (tools/coverage_report.py) and uploads the annotated report as an artifact
+  # so the numbers can be tracked over time.  The exact percentage depends on
+  # the Verilator version; 5.020 does not emit BRDA records at all, so the
+  # branch gate is skipped with a warning when they are missing.
   coverage:
     runs-on: ubuntu-24.04
     timeout-minutes: 15

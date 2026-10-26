@@ -13,7 +13,7 @@ this document lives at the repository root.
 - **Control**: synchronous FSM with 8 states (`FETCH`, `OPR`, `OPR2`, `EXEC`, `EXEC2`, `IN`, `IRQ`, `HLT`)
 - **Stack**: LIFO growing towards lower addresses (see `docs/ISA.md`)
 - **Interrupts**: configurable IRQ vector (`IRQ_VECTOR`), handled once per IRQ cycle; `RETI` restores the saved arithmetic flags (flag `I` stays cleared)
-- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the full 256-byte memory and ~68 % of the HX1K logic cells, closing timing at 25.32 MHz with nextpnr constrained to 16 MHz (the board runs at 12 MHz) using the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
+- **FPGA support**: iCEstick/iCE40HX1K (see `fpga/top.v`); the design **fits** using 1 BRAM for the full 256-byte memory and ~68 % of the HX1K logic cells, closing timing at 25.45 MHz with nextpnr constrained to 16 MHz (the board runs at 12 MHz) using the YoWASP toolchain (yosys 0.69 / nextpnr 0.11; the distro nextpnr 0.6 does not close timing). CI enforces the area/timing budget (`tools/fpga_report.py`).
 
 ## Datapath
 
@@ -82,7 +82,7 @@ Implemented in `rtl/alu.v`. Flags:
 - **Z (Zero)**: result == 0
 - **N (Negative)**: bit 7 of the result set (interpreted as signed)
 - **C (Carry)**: carry/borrow out of the 8-bit add/subtract depending on the operation
-- **V (Overflow)**: **signed** overflow (two's complement); only for ADD/ADDI/SUB/SUBI/CMP/CMPI and INC/DEC
+- **V (Overflow)**: **signed** overflow (two's complement) for ADD/ADDI/SUB/SUBI/CMP/CMPI, INC/DEC, ADC/SBC and the 16-bit pairs ADCW/SUBW; NEG sets it only for `-128` (the one operand that overflows)
 
 Supported operations: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MUL`, `DIV` (`MUL`/`DIV` in phase 9) and, from phase 12, `NEG`, `NOT`, `ADC`, `SBC`, `ROL`, `ROR`, `TEST` and the 16-bit pairs `ADCW`/`SUBW` (see `docs/ISA.md` §10.10). `ADC`/`SBC` share one operation selected by `sh`, and so do `ROL`/`ROR`; `ADCW`/`SUBW` reuse them too and chain the low byte's carry through `c16`; `cin` feeds the carry/borrow (or the bit rotated in).
 
@@ -96,8 +96,8 @@ Supported operations: `ADD`, `SUB`, `AND`, `OR`, `XOR`, `CMP`, `SHL`, `SHR`, `MU
 ## Stack and subroutines
 
 - **SP** points to the top of the stack. Behaviour defined in `docs/ISA.md`.
-- **PUSH** decrements SP and writes the value
-- **POP** reads the value and increments SP
+- **PUSH** writes the value at SP and then decrements SP
+- **POP** increments SP and then reads the value at the new SP
 - **CALL** saves the return address and jumps
 - **RET** recovers the return address from the stack
 
@@ -119,17 +119,19 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
 - **Pass 2**: generates bytes with the encoding from `docs/ISA.md`
 - Supports mnemonics, immediates (`LDI`/`ADDI`/`SUBI`/`CMPI`), registers, direct addressing `[a]`, register-indirect `[r]`, **indexed** `[r+off]` (and the 16-bit `LDW`/`STW`), labels, `;` comments, unsigned branches and signed `Jcc` (`JLT/JGE/JLE/JGT`, `JVS/JVC/JMI/JPL`)
 - Handles the prefixed (`0xFA`) extended instructions, emitting 2 bytes (`NEG`, `NOT`, `ADC`, `SBC`, `SWAP`/`XCHG`, `ROL`, `ROR`, `TEST`, `PUSHF`, `POPF`, `ADCW`, `SUBW`, `RETI`) or 3 (`LDW`/`STW`)
+- Evaluates `term +/- term` expressions (numbers, labels or `.equ` constants) in immediates, addresses and `.org`; `.equ` accepts 16-bit values and every 8-bit use is range-checked; `.nostack` allows an image to use the stack area when the program never touches the stack
 - Generates `.hex` with hexadecimal bytes (one instruction per line or sequence)
 
 ## Verification
 
-- **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v`, `flag_i_tb.v`, `cpu_directed_tb.v`, `top_tb.v`, `top_pmod_tb.v` (includes exhaustive sweeps in the ALU)
+- **Modules**: `alu_tb.v`, `pc_tb.v`, `ram_tb.v`, `regfile_tb.v`, `flag_i_tb.v`, `cpu_directed_tb.v`, `top_tb.v`, `top_in_tb.v`, `top_pmod_tb.v` (includes exhaustive sweeps in the ALU)
 - **Programs**: each `programs/*.asm` is assembled, simulated with `cpu_tb.v` and its `OUT` is compared with `programs/*.ref`
 - **IRQ**: `irq_tb.v` verifies correct handling and `RETI` (which restores the
   `C,Z,N,V` flags saved when the interrupt was taken)
 - **Formal**: `make formal` runs SymbiYosys (`formal/*.sby`): the ALU is proven
-  equivalent to a reference model for all operations and operands, and the FSM is
-  proven to stay within its 7 documented states
+  equivalent to a reference model for all operations and operands, the FSM is
+  proven to stay within its 8 documented states, and the PC/register file are
+  checked against their reset, load/write and hold rules with BMC
 - **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`; with `--coverage` (`make coverage`) a separate instrumented model is built and the demo runs are merged into an annotated report
 - **Directed**: `cpu_directed_tb.v` covers corner cases (CALL/RET, stack, ported I/O, etc.)
 - **Assembler**: `asm/test_assembler.py` (pytest) verifies the instruction-by-instruction encoding; `asm/test_isa_table.py` checks that the ISA table does not drift from the assembler or the disassembler.

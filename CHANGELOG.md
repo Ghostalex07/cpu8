@@ -5,6 +5,63 @@ Changes are grouped under *Unreleased* until a tag is cut.
 
 ## [Unreleased]
 
+## [1.0.2] - 2026-10-22
+
+### Added
+
+- **IN wait state (`S_IN`)**: the input handshake now holds `in_port` from the
+  operand fetch (or from `S_EXEC` for the 1-byte form) and samples `in_data` one
+  cycle later. An external decoder plus the two-FF synchronizer in
+  `fpga/top.v` therefore sees a stable port for at least two clock edges.
+  `IN rd` takes 3 cycles and `IN n,rd` takes 4; the ISA, FSM table, debugger
+  cycle model and formal properties are updated. `tb/top_in_tb.v` drives
+  `pmod_in` combinationally from `dut.in_port` and fails on the old RTL.
+- **Wrap-around programs**: `stack_wrap.asm` pushes across the SP `0x00 -> 0xFF`
+  wrap, and `pc_wrap.asm` executes a 2-byte instruction at `0xFE` so the
+  operand fetch wraps PC `0xFF -> 0x00`. Both have golden traces and `.ref`
+  files, and the fuzzer round-trips them.
+- **`.nostack` directive**: lets an image extend into the stack area when the
+  program provably never uses the stack (required by the wrap tests).
+- **Interrupt state in the dump**: `cpu_dump_tb.v`, the ISS, the debugger and
+  the differential fuzzer now expose `flag_i` and the saved `C/Z/N/V` snapshot.
+- **Formal BMC for the PC and register file** (`formal/pc.sby`,
+  `formal/regfile.sby`), covering reset, load/write priority, increment and
+  hold without hierarchical references.
+- **Branch coverage budget**: `coverage_report.py` parses `BRDA` records and
+  enforces a 95.5 % floor in addition to the 95 % line floor; `make coverage`
+  enables every Verilator metric.
+- **Directed tests**: reset from `S_HLT`, IRQ deassert/reassert, `RETI` in the
+  fuzzer's no-operand list, and mutual-exclusion assertions between RAM/register
+  writes, OUT, PC load/inc and SP inc/dec.
+
+### Changed
+
+- **SBC documentation and tests**: SBC subtracts the incoming no-borrow `C`
+  directly (`rd - rs - C`, x86 convention), not the 6502 `rd - rs - (1 - C)`.
+  The prose now states that two SBCs do not chain a borrow; use `SUBW` or handle
+  it explicitly. New ISS tests cover borrow, ADCW and SUBW chaining.
+- **ALU timing**: a dedicated `y_addr` adder drives `ram_addr`, removing the
+  multiplier/divider from the LDW/STW address cone. nextpnr is constrained to
+  16 MHz; the current build uses 870/1280 LCs (68 %) and reaches 25.45 MHz.
+  Both release bitstream hashes are regenerated.
+- **Assembler expressions and errors**: 16-bit `.equ` constants, `term +/- term`
+  expressions in immediates, addresses and `.org`, `[label+3]` indexing, range
+  checks with the offending expression, source-line context in errors, and
+  removal of a stale `.hex` when assembly fails.
+- **Tooling UX**: the ISS accepts `--irq`/`--irq-vector` and warns when the step
+  limit is reached; the debugger counts an IRQ as 2 cycles, follows CALL in
+  `next`, and treats watch names case-insensitively; `regress --update`
+  assembles fresh images and refuses to save stale traces; `difftest` reports a
+  missing iverilog clearly and labels whether an IRQ was actually taken;
+  `fuzz` computes lengths through the assembler.
+
+### Fixed
+
+- Debugger `disasm`/`delete` argument validation, and an obsolete five-state /
+  one-cycle interrupt description in the docs.
+- Coverage instrumentation of structurally unreachable reserved flag bits and
+  decoder states.
+
 ## [1.0.1] - 2026-10-21
 
 ### Added

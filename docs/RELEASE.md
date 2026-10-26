@@ -2,15 +2,16 @@
 
 This page documents the release assets, how to rebuild and verify them, and the
 checklist used for a tagged CPU8 release. The first numbered release was
-`v1.0.0`; `v1.0.1` adds the Pmod hardware demo and the reproducible-bitstream
-check.
+`v1.0.0`; `v1.0.1` added the Pmod hardware demo and the
+reproducible-bitstream check; `v1.0.2` adds the IN wait state, tighter timing,
+the branch coverage budget and the wrapper tests.
 
 ## Assets
 
 | Asset | Program | Size | SHA-256 |
 |---|---|---|---|
-| `top.bin` | `countdown` (default demo) | 32,220 B | `2998f31306b869c23f69aceb80f22b5949f9daf86ea2d92ee25657dd14c29999` |
-| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `8391c9e67c0056d5338f359a4165c4e0590c5f1acd3a10cbe9b8f5318de762ca` |
+| `top.bin` | `countdown` (default demo) | 32,220 B | `b969eb69390acdf7486c6a5c0a5191430d1df528f1ce8e0c72b2f4f9bb4a7c4e` |
+| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `30c59f41287a5ed7513ea9cfe37ba72a174c2ca59611c49ee9dc1115265cf1b7` |
 
 Each bitstream has a matching `.sha256` file. `SHA256SUMS` contains both lines
 and can be checked in one command.
@@ -78,6 +79,7 @@ fails even if it still fits and meets timing.
    make coverage
    make fpga-check
    make fpga-repro
+   make fpga-repro FPGA_PROG=pmod
    ```
 3. Build the assets and verify them:
    ```bash
@@ -93,15 +95,15 @@ fails even if it still fits and meets timing.
 5. Commit and push `main`.
 6. Create an **annotated** tag and push it:
    ```bash
-   git tag -a v1.0.1 -m "cpu8 v1.0.1: Pmod demo and reproducible bitstream"
+   git tag -a v1.0.2 -m "cpu8 v1.0.2: IN handshake, timing and coverage"
    git push origin main
-   git push origin v1.0.1
+   git push origin v1.0.2
    ```
 7. Create the GitHub release with the assets:
    ```bash
-   gh release create v1.0.1 \
-     --title "cpu8 v1.0.1" \
-     --notes-file /tmp/cpu8-v1.0.1-notes.md \
+   gh release create v1.0.2 \
+     --title "cpu8 v1.0.2" \
+     --notes-file /tmp/cpu8-v1.0.2-notes.md \
      cpu8/build/top.bin \
      cpu8/build/top.bin.sha256 \
      cpu8/build/top_pmod.bin \
@@ -119,15 +121,17 @@ fails even if it still fits and meets timing.
 
 CPU8 uses semantic versioning for the project and the release assets:
 
-- **patch** (`v1.0.1`): verification, tooling, documentation or a new demo that
-  does not change the ISA or the default bitstream;
-- **minor** (`v1.1.0`): new instructions, new I/O features or a changed default
-  bitstream;
+- **patch** (`v1.0.2`): verification, tooling, documentation, bug fixes or a
+  new demo; the ISA and the memory map do not change. A rebuilt default
+  bitstream is allowed when an RTL fix changes synthesis, and its hashes are
+  updated with the release;
+- **minor** (`v1.1.0`): new instructions, new I/O features that change the
+  programming model, or a memory-map change;
 - **major** (`v2.0.0`): incompatible ISA or memory-map changes.
 
-The `v1.0.0` countdown bitstream hash is kept as the golden reference for the
-current RTL and toolchain. If a release changes it, update
-`cpu8/fpga/top.bin.sha256` and the asset table together.
+The bitstream hashes in this table are the golden reference for the current RTL
+and toolchain. If a release changes them, update `cpu8/fpga/top.bin.sha256`,
+`cpu8/fpga/top_pmod.bin.sha256` and the asset table together.
 
 ## Signing
 

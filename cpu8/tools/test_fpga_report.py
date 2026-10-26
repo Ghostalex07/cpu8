@@ -24,12 +24,12 @@ REPORT = """
 Info: Device utilisation:
 Info: \t         ICESTORM_LC:     823/   1280    64%
 Info: \t        ICESTORM_RAM:       1/     16     6%
-Info: Max frequency for clock 'clk$SB_IO_IN_$glb_clk': 14.84 MHz (PASS at 12.00 MHz)
+Info: Max frequency for clock 'clk$SB_IO_IN_$glb_clk': 18.42 MHz (PASS at 16.00 MHz)
 """
 
 
 def test_parse_extracts_lc_fmax_and_ram():
-    assert fpga_report.parse(REPORT) == (823, 14.84, 1)
+    assert fpga_report.parse(REPORT) == (823, 18.42, 1)
 
 
 def test_parse_uses_the_slowest_clock():
@@ -38,11 +38,11 @@ def test_parse_uses_the_slowest_clock():
 
 
 def test_check_accepts_fitting_design():
-    assert fpga_report.check(823, 14.84, 1) == []
+    assert fpga_report.check(823, 18.42, 1) == []
 
 
 def test_check_rejects_oversized_design():
-    errors = fpga_report.check(fpga_report.MAX_LC + 1, 14.84, 1)
+    errors = fpga_report.check(fpga_report.MAX_LC + 1, 18.42, 1)
     assert any("logic cells" in message for message in errors)
 
 
@@ -52,12 +52,12 @@ def test_check_rejects_slow_design():
 
 
 def test_check_rejects_missing_bram():
-    errors = fpga_report.check(823, 14.84, 0)
+    errors = fpga_report.check(823, 18.42, 0)
     assert any("block RAM" in message for message in errors)
 
 
 def test_check_rejects_extra_bram():
-    errors = fpga_report.check(823, 14.84, 2)
+    errors = fpga_report.check(823, 18.42, 2)
     assert any("block RAM" in message for message in errors)
 
 
@@ -76,7 +76,7 @@ def test_main_returns_zero_for_a_fitting_report(tmp_path, capsys):
     log = tmp_path / "fpga.log"
     log.write_text(REPORT, encoding="utf-8")
     assert fpga_report.main([str(log)]) == 0
-    assert "823/1280 LCs (64 %), Fmax 14.84 MHz, RAM 1/16" in capsys.readouterr().out
+    assert "823/1280 LCs (64 %), Fmax 18.42 MHz, RAM 1/16" in capsys.readouterr().out
 
 
 def test_main_fails_on_a_missing_report(tmp_path):

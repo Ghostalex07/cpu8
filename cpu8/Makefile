@@ -249,7 +249,8 @@ verilator: dirs $(VL_DIR)/Vcpu_sim
 ## programs writing one .dat per run and then merges everything into an
 ## annotated report: build/verilator-cov/coverage.info and
 ## build/verilator-cov/report/.  coverage_report.py enforces both the line and
-## the BRDA budgets.
+## the BRDA budgets; when the Verilator build does not emit BRDA records at all
+## (the 5.020 package in Ubuntu 24.04), it skips the branch gate with a warning.
 # -Wno-COVERIGN only exists in recent Verilators: the distro's 5.020 (Ubuntu
 # 24.04) errors out on the unknown warning.  Probe for it so `make coverage`
 # also builds with the older toolchain used by the CI job.
@@ -403,7 +404,7 @@ clean:
 	pytools lint docs docs-check difftest difftest-long regress regress-update verilator \
 	coverage vlint vlint-top fmt fmt-check fpga fpga-check fpga-repro release-assets formal clean help check
 
-## --- Full local battery: the same as CI runs ---
+## --- Full local battery: the CI test job (fmt, formal, FPGA and coverage are separate) ---
 check: COUNT = 150
 check: SEED = 1
 check: vlint vlint-top modtests progtests irqtest verilator pytools difftest regress docs-check lint
@@ -411,7 +412,7 @@ check: vlint vlint-top modtests progtests irqtest verilator pytools difftest reg
 help:
 	@echo "make test                          (modules + demo programs + irq)"
 	@echo "make verilator                     (simulates the RTL with Verilator)"
-	@echo "make coverage                      (Verilator coverage report of the RTL)"
+	@echo "make coverage                      (Verilator line and toggle/branch coverage of the RTL)"
 	@echo "make vlint                         (Verilator -Wall analysis only of the RTL)"
 	@echo "make fmt                           (format the Verilog sources with Verible)"
 	@echo "make fmt-check                     (report the Verilog files Verible would change)"
@@ -419,7 +420,7 @@ help:
 	@echo "make fpga-check FPGA_PROG=<name>   (fpga + area/timing budget check)"
 	@echo "make fpga-repro                    (fpga-check + committed bitstream SHA-256)"
 	@echo "make release-assets                (build top.bin/top_pmod.bin + checksums)"
-	@echo "make formal                        (SymbiYosys proofs of the ALU and the FSM)"
+	@echo "make formal                        (SymbiYosys proofs of the ALU, FSM, PC and register file)"
 	@echo "make sim  PROG=programs/<name>     (assembles and simulates; compares with .ref)"
 	@echo "make wave PROG=programs/<name>     (assembles and simulates; opens GTKWave)"
 	@echo "make trace PROG=programs/<name>    (trace: one line per instruction)"
@@ -433,6 +434,6 @@ help:
 	@echo "make difftest-long [COUNT=N] [SEED=S] (long run for the scheduled CI job)"
 	@echo "make regress                       (regression: bytes + traces + fuzz)"
 	@echo "make regress-update                (regenerates the golden reference)"
-	@echo "make check                         (full battery: the same as CI)"
+	@echo "make check                         (CI test job: tests, lint, docs, difftest and regress)"
 	@echo "make asm  PROG=programs/<name>     (assemble only)"
 	@echo "make clean"

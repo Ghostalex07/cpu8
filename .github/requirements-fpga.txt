@@ -1,11 +1,10 @@
 # iCE40 toolchain for the CI `fpga` job, installed with pip (YoWASP).
 #
-# The Ubuntu 24.04 toolchain is NOT used on purpose: nextpnr 0.6 places the
-# design at 11.35 MHz, below the 12 MHz target, and then exits with an error.
-# These wheels carry the same yosys/nextpnr the design is calibrated against
-# (862/1280 LCs at 12.81 MHz), which keeps the area/timing budget check
-# meaningful.  Versions are pinned for reproducibility; bump them deliberately
-# when a new release is known to still fit.
+# The Ubuntu 24.04 toolchain is NOT used on purpose: distro nextpnr 0.6 does
+# not close the 16 MHz constraint, while these wheels carry the yosys/nextpnr
+# the design is calibrated against (870/1280 LCs at 25.45 MHz).  Versions are
+# pinned for reproducibility; bump them deliberately when a new release is
+# known to still fit.
 #
 # Used by actions/setup-python as the cache key (cache: pip).  These wheels are
 # ~85 MB, so the cache saves a noticeable amount of time per run.
