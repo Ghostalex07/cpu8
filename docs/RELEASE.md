@@ -4,14 +4,15 @@ This page documents the release assets, how to rebuild and verify them, and the
 checklist used for a tagged CPU8 release. The first numbered release was
 `v1.0.0`; `v1.0.1` added the Pmod hardware demo and the
 reproducible-bitstream check; `v1.0.2` adds the IN wait state, tighter timing,
-the branch coverage budget and the wrapper tests.
+the branch coverage budget and the wrapper tests; `v1.1.0` adds the UART
+console, the I/O bus and the programmable timer on the FPGA.
 
 ## Assets
 
 | Asset | Program | Size | SHA-256 |
 |---|---|---|---|
-| `top.bin` | `countdown` (default demo) | 32,220 B | `b969eb69390acdf7486c6a5c0a5191430d1df528f1ce8e0c72b2f4f9bb4a7c4e` |
-| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `30c59f41287a5ed7513ea9cfe37ba72a174c2ca59611c49ee9dc1115265cf1b7` |
+| `top.bin` | `countdown` (default demo) | 32,220 B | `f4f71c566b64e472be35db79d0cbd7ea71498c77472cb7e3bfe98dbe246f8be3` |
+| `top_pmod.bin` | `pmod` (endless Pmod loop) | 32,220 B | `7e6cee48dc82af76916e22be889976462b12479228c97ade95ea7c0557f50c8d` |
 
 Each bitstream has a matching `.sha256` file. `SHA256SUMS` contains both lines
 and can be checked in one command.
