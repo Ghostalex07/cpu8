@@ -16,10 +16,13 @@ module top_pmod_tb;
 
   reg  [7:0] pmod_in = 8'h00;
   wire [4:0] led;
+  wire       uart_tx;
 
   top dut (
       .clk(clk),
       .pmod_in(pmod_in),
+      .uart_rx(1'b1),
+      .uart_tx(uart_tx),
       .led(led)
   );
 

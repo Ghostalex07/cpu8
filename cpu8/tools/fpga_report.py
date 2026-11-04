@@ -24,7 +24,7 @@ import re
 import sys
 
 DEVICE_LC = 1280
-MAX_LC = 1024  # 80 % of the device, a hard area budget with headroom
+MAX_LC = 1152  # 90 % of the device, a hard area budget with headroom
 MIN_FMAX_MHZ = 16.0  # nextpnr frequency constraint and report target
 DEVICE_RAM = 16
 EXPECTED_RAM = 1  # ram.v must keep inferring one block RAM

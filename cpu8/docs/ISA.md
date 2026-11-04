@@ -656,6 +656,19 @@ On the iCEstick the eight data pins of the Pmod connector drive `in_data` (with
 internal pull-ups and a two-flip-flop synchronizer in `fpga/top.v`), so `IN`
 reads that byte; see `fpga/icestick.pcf` for the pinout.
 
+**Port map on the iCEstick** (see `fpga/top.v`):
+
+| Port | `OUT` | `IN` |
+|---|---|---|
+| 0 | 5 LEDs (low 5 bits) | Pmod byte |
+| 1 | start a UART transmission (8N1, 115200) | last byte received; reading acknowledges `rx_ready` |
+| 2 | timer period in ms (0 disables and clears the interrupt) | bit 0: interrupt pending |
+| 3 | ignored | console status: bit 0 `rx_ready`, bit 1 `tx_busy`, bit 2 `rx_overrun`, bit 3 `rx_busy` |
+
+The timer output is the only interrupt source wired to the CPU (`IRQ_VECTOR =
+0x08`). The UART uses the second FT2232H channel (FPGA pin 8 = TX, pin 9 = RX)
+and shows up on the host as `/dev/ttyUSB1`.
+
 ### 10.10 Extended instructions (Phase 12, prefix `0xFA`)
 
 The byte `0xFA` is a **prefix**: it selects an *extended operation* that is

@@ -42,7 +42,8 @@ module cpu #(
     output reg  [7:0] out_data,   // last value sent by OUT
     output reg        out_valid,  // 1-cycle pulse when OUT is executed
     output reg  [1:0] out_port,   // port of the last OUT
-    output wire [1:0] in_port     // port read by the current IN instruction
+    output wire [1:0] in_port,    // port read by the current IN instruction
+    output wire       in_valid    // high during S_IN, when in_data is captured
 );
 
   // ------------------------------------------------------------------
@@ -190,7 +191,11 @@ module cpu #(
   //  before the S_IN capture edge.
   // ------------------------------------------------------------------
   wire [1:0] io_port = io_op_fetch ? ram_rdata[1:0] : io_op ? operand[1:0] : 2'b00;
-  assign in_port = io_port;
+  assign in_port  = io_port;
+  //  `sel_in` is only high in S_IN, the cycle in which `in_data` is written
+  //  to rd.  It doubles as the peripheral read strobe (e.g. to acknowledge a
+  //  received UART byte), so no extra state is needed in the control unit.
+  assign in_valid = sel_in;
 
   // ------------------------------------------------------------------
   //  RAM.  Address = PC (FETCH/OPR), SP (stack), rs indirect, or

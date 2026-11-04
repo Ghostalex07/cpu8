@@ -5,7 +5,25 @@ Changes are grouped under *Unreleased* until a tag is cut.
 
 ## [Unreleased]
 
-## [1.0.2] - 2026-10-22
+### Added
+
+- **UART console, I/O bus and programmable timer on the FPGA**: `fpga/top.v` now
+  decodes the four CPU ports: port 0 drives the LEDs / reads the Pmod byte,
+  port 1 starts a UART transmission on the FT2232H channel B (FPGA pin 8 TX,
+  pin 9 RX, 115200 8N1) and reads the last received byte, port 2 programs a
+  timer whose output drives the CPU interrupt line, and port 3 exposes console
+  status (`rx_ready`, `tx_busy`, `rx_overrun`, `rx_busy`). `rtl/cpu.v` gains
+  `in_valid`, which doubles as the peripheral read strobe. New RTL:
+  `rtl/uart_tx.v`, `rtl/uart_rx.v`, `rtl/timer.v`. New demos:
+  `programs/uart_echo.asm` and `programs/timer.asm`. New testbenches:
+  `uart_tx_tb`, `uart_rx_tb`, `timer_tb`, `top_uart_tb`, `top_timer_tb`.
+- **I/O port map documented** in `docs/ISA.md` §10.9 and `docs/FPGA.md`.
+
+### Changed
+
+- `MAX_LC` raised from 1024 to 1152 (90 % of the device) to fit the new
+  peripherals: the design now uses 1064/1280 LCs, Fmax 26.28 MHz.
+- Bitstream goldens refreshed (`top.bin`, `top_pmod.bin`) for the new top.
 
 ### Added
 

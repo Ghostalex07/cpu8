@@ -29,6 +29,8 @@ make wave PROG=programs/countdown  # Opens GTKWave
 | `muldiv.asm` | Hardware `MUL`/`DIV` (Phase 9) | Multiplication, overflow (`C=1`), division and division by zero (`C=1`). |
 | `inout.asm` | `IN` input and port output `OUT n, rd` (Phase 9) | Reads the input port and writes to ports 0/1/2. |
 | `pmod.asm` | iCEstick Pmod input demo | Endless `IN A; OUT A; JMP` loop: the low five bits of the Pmod byte appear on the LEDs. It never halts, so it is excluded from the halt-based harness and tested by `tb/top_pmod_tb.v`; `make fpga FPGA_PROG=pmod` builds its bitstream. |
+| `uart_echo.asm` | iCEstick UART console demo | Prints `CPU8` over the serial port and echoes every received byte back to the host and to the LEDs. Endless loop; build with `make fpga FPGA_PROG=uart_echo`. |
+| `timer.asm` | iCEstick programmable timer demo | Counts up on the LEDs roughly 20 times per second, driven by the timer interrupt. Endless loop; build with `make fpga FPGA_PROG=timer`. |
 | `euclid.asm` | Greatest common divisor (Euclid's algorithm) | GCD of (144,60) as the remainder `a − (a/b)·b` using hardware `DIV`/`MUL`. |
 | `factorial.asm` | Iterative factorial (5! = 120) | Loop with `MUL` and `DEC`; stops when `B` reaches 0. |
 | `primes.asm` | Primes below 32 (trial division) | Nested loops + RAM cells; uses `DIV`/`MUL` for the remainder. |

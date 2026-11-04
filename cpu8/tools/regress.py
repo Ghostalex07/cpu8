@@ -44,10 +44,10 @@ GOLDEN = RAIZ / "tools" / "golden"
 TRACES = GOLDEN / "traces"
 # irq.asm needs the irq signal (covered by `make irqtest`); with irq=0 its trace
 # adds nothing, so it is excluded from the trace check (not from the bytes one).
-TRACE_EXCLUIDOS = {"irq"}
+TRACE_EXCLUIDOS = {"irq", "uart_echo", "timer"}
 # pmod.asm loops forever (hardware demo); it is covered by top_pmod_tb and must
 # not enter the halt-based trace/bytes regression.
-PROGRAMAS_EXCLUIDOS = {"pmod"}
+PROGRAMAS_EXCLUIDOS = {"pmod", "uart_echo", "timer"}
 
 
 def _programas() -> list[Path]:

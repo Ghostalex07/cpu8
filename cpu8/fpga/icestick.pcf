@@ -24,3 +24,8 @@ set_io led[1] 96
 set_io led[2] 97
 set_io led[3] 98
 set_io led[4] 99
+
+# Second FT2232H channel, wired straight to the FPGA and exposed as a UART on
+# the host side (/dev/ttyUSB1, 115200 8N1).
+set_io uart_tx 8
+set_io -pullup yes uart_rx 9

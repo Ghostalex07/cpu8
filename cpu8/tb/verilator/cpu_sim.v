@@ -34,7 +34,8 @@ module cpu_sim #(
       .out_valid(out_valid),
       .in_data(8'h10 + {6'b0, in_port}),
       .in_port(in_port),
-      .out_port(out_port)
+      .out_port(out_port),
+      .in_valid()
   );
 
   // Path of the .hex file with the program (arrives as +hex=<path>).

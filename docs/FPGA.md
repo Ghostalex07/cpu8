@@ -8,23 +8,31 @@ hardware.
 
 The target is the **iCEstick** (Lattice iCE40HX1K-TQ144, 12 MHz clock, 5 LEDs
 and one 2x6 Pmod connector). The board has no user switches, so the eight data
-pins of the Pmod connector are the CPU input bus.
+pins of the Pmod connector are the CPU input bus. The second FT2232H channel is
+wired straight to the FPGA and is used as the console UART (FPGA pin 8 = TX,
+pin 9 = RX).
 
 `cpu8/fpga/top.v` instantiates the CPU and provides:
 
 - a **power-on reset** that holds `rst` high for the first 8 clock cycles;
 - a **two-flip-flop synchronizer** for the asynchronous Pmod inputs
   (`in_meta` → `in_sync` → `in_data`), initialized to `0xFF`;
-- the **5 LEDs**: while the CPU runs they show `out_data[4:0]`; after `HLT`
-  they all turn on;
+- the **5 LEDs**: while the CPU runs they show the last value written to
+  port 0; after `HLT` they all turn on;
 - a **program image** loaded at synthesis time: `make fpga` assembles
   `programs/<FPGA_PROG>.asm`, copies it to `cpu8/fpga/program.hex`, and Yosys
   reads it through `$readmemh` under `-DRAM_INIT` into the 256-byte RAM.
-
-The top deliberately does **not** decode the I/O port number. The iCEstick has
-one 8-bit input bus and one set of LEDs, so every `IN n` reads the same Pmod
-byte and every `OUT` value appears on the same five LEDs. `out_port` is left
-unconnected and `in_port` is unused.
+- a **console** on the second FT2232H channel: `uart_tx` (FPGA pin 8) and
+  `uart_rx` (FPGA pin 9), 115200 8N1, exposed on the host as `/dev/ttyUSB1`;
+- a **programmable timer** whose output drives the CPU interrupt line;
+- a small **I/O decoder** that maps the four CPU ports to peripherals:
+  - port 0: `OUT` → LEDs, `IN` → Pmod byte;
+  - port 1: `OUT` → start a UART transmission, `IN` → last byte received (read
+    acknowledges `rx_ready`);
+  - port 2: `OUT` → timer period in milliseconds (0 disables and clears the
+    interrupt), `IN` → bit 0: interrupt pending;
+  - port 3: `IN` → console status (bit 0 `rx_ready`, bit 1 `tx_busy`,
+    bit 2 `rx_overrun`, bit 3 `rx_busy`); `OUT` is ignored.
 
 ## Pinout
 
@@ -56,9 +64,12 @@ unconnected and `in_port` is unused.
 | 11 | GND | — |
 | 12 | VCC (3.3 V) | — |
 
-All eight inputs enable the FPGA **internal pull-ups** in
-`cpu8/fpga/icestick.pcf`, so an unconnected pin reads `1` and the bus reads
-`0xFF`.
+### UART (second FT2232H channel)
+
+| Signal | FPGA pin | Host |
+|---|---|---|
+| `uart_tx` | 8 | `/dev/ttyUSB1` RX (115200 8N1) |
+| `uart_rx` | 9 | `/dev/ttyUSB1` TX (115200 8N1) |
 
 > **3.3 V only.** The iCE40 pins are not 5 V tolerant. Do not connect a 5 V
 > signal to the Pmod. Use 3.3 V logic, or a switch/jumper to GND (open = 1,
@@ -90,8 +101,8 @@ so `build/top.bin` is always the default demo and matches the committed
 `cpu8/fpga/top.bin.sha256`.
 
 The area/timing report expects the pinned YoWASP toolchain (yosys 0.69 /
-nextpnr 0.11). The current design uses **870/1280 logic cells (68 %)** and closes
-timing at **25.45 MHz** with nextpnr constrained to 16 MHz, leaving margin over
+nextpnr 0.11). The current design uses **1064/1280 logic cells (83 %)** and closes
+timing at **26.28 MHz** with nextpnr constrained to 16 MHz, leaving margin over
 the board's 12 MHz clock. The report enforces that 16 MHz target. The pinned
 YoWASP wheels keep synthesis reproducible and are the toolchain the bitstreams
 are calibrated against; distro nextpnr 0.6 does not close the constraint.
@@ -139,6 +150,8 @@ root.
 |---|---|---|
 | `top.bin` | `countdown.asm` | counts 9…0 on the LEDs once; after `HLT` all five turn on. Power-cycle to repeat. |
 | `top_pmod.bin` | `pmod.asm` | endless `IN A; OUT A; JMP` loop: the low five bits of the Pmod byte follow the inputs in real time. Open inputs read `0xFF` (all LEDs on); grounding a pin clears its bit. |
+| (build it) | `uart_echo.asm` | prints `CPU8` over the serial port and echoes every received byte back to the host and to the LEDs. Build with `make fpga FPGA_PROG=uart_echo`. |
+| (build it) | `timer.asm` | counts up on the LEDs roughly 20 times per second, driven by the programmable timer interrupt. Build with `make fpga FPGA_PROG=timer`. |
 
 `fibonacci.asm` and `euclid.asm` are **simulation demos**, not bitstreams:
 they end in `HLT`, and the top turns all LEDs on at `HLT`, so their final value

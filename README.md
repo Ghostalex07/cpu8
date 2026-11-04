@@ -200,8 +200,8 @@ The project relies on several layers of checking, all runnable locally:
 - **FPGA synthesis** (`make fpga`): yosys, `nextpnr-ice40` and `icepack` build a
   bitstream for the iCEstick (iCE40HX1K). `make fpga-check` — and a dedicated CI
   job — fails if the design outgrows the area budget or misses the 16 MHz timing
-  budget (`tools/fpga_report.py`); the current build uses 870/1280 logic cells
-  and closes at 25.45 MHz with nextpnr constrained to 16 MHz. The job installs
+  budget (`tools/fpga_report.py`); the current build uses 1064/1280 logic cells
+  and closes at 26.28 MHz with nextpnr constrained to 16 MHz. The job installs
   the pinned YoWASP wheels instead of the distro packages: they are the
   toolchain the bitstreams are calibrated against, while the older distro
   nextpnr does not close the 16 MHz constraint and would make the area/timing
