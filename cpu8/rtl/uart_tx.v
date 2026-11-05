@@ -27,9 +27,9 @@ module uart_tx #(
 );
 
   localparam integer CNT_W = (DIV > 1) ? $clog2(DIV) : 1;
-  /* verilator lint_off WIDTHTRUNC */
+  /* verilator lint_off WIDTH */
   localparam [CNT_W-1:0] RELOAD = DIV - 1;
-  /* verilator lint_on WIDTHTRUNC */
+  /* verilator lint_on WIDTH */
 
   reg [9:0] sh;  // {stop, data[7:0], start}; bit 0 goes out first
   reg [3:0] bits;  // bits left to send (10 down to 1)

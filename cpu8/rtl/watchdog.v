@@ -40,9 +40,9 @@ module watchdog #(
       irq       <= 1'b0;
       timeout   <= 1'b0;
     end else if (enabled && !timeout) begin
-      /* verilator lint_off WIDTHEXPAND */
+      /* verilator lint_off WIDTH */
       if (tick == TICKS_PER_MS - 1) begin
-        /* verilator lint_on WIDTHEXPAND */
+        /* verilator lint_on WIDTH */
         tick <= 16'd0;
         if (remaining == 8'd1) begin
           remaining <= 8'd0;

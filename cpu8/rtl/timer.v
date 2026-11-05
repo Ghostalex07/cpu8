@@ -25,9 +25,9 @@ module timer #(
 );
 
   localparam integer CNT_W = (TICKS_PER_MS > 1) ? $clog2(TICKS_PER_MS) : 1;
-  /* verilator lint_off WIDTHTRUNC */
+  /* verilator lint_off WIDTH */
   localparam [CNT_W-1:0] RELOAD = TICKS_PER_MS - 1;
-  /* verilator lint_on WIDTHTRUNC */
+  /* verilator lint_on WIDTH */
 
   reg [7:0] period_r;
   reg [7:0] ms;

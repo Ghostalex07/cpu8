@@ -29,15 +29,15 @@ module uart_rx #(
 );
 
   localparam integer CNT_W = (DIV > 1) ? $clog2(DIV) : 1;
-  /* verilator lint_off WIDTHTRUNC */
+  /* verilator lint_off WIDTH */
   localparam [CNT_W-1:0] RELOAD = DIV - 1;
-  /* verilator lint_on WIDTHTRUNC */
+  /* verilator lint_on WIDTH */
   // The two-flop synchronizer delays the detected edge by two clocks, so wait
   // half a bit MINUS that skew to sample the middle of the start bit.
   localparam integer SKEW = 2;
-  /* verilator lint_off WIDTHTRUNC */
+  /* verilator lint_off WIDTH */
   localparam [CNT_W-1:0] HALF = ((DIV / 2) > SKEW) ? (DIV / 2 - SKEW) : 0;
-  /* verilator lint_on WIDTHTRUNC */
+  /* verilator lint_on WIDTH */
 
   localparam [1:0] S_IDLE = 2'd0;
   localparam [1:0] S_START = 2'd1;

@@ -203,7 +203,9 @@ module control (
 
   always @(posedge clk) begin
     if (rst) state <= S_FETCH;
-    else begin state <= nstate; end
+    else begin
+      state <= nstate;
+    end
   end
 
   // --- Control logic (combinational) ---
