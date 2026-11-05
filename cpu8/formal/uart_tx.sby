@@ -1,0 +1,16 @@
+[options]
+mode bmc
+depth 64
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/uart_tx.v uart_tx_fv.sv
+hierarchy -top uart_tx_fv
+proc
+prep -top uart_tx_fv
+
+[files]
+rtl/uart_tx.v ../rtl/uart_tx.v
+uart_tx_fv.sv uart_tx_fv.sv

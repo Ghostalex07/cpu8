@@ -12,7 +12,7 @@
 //  transition, never `ram_addr`:
 //      S_FETCH  -> (flag_i && irq) ? S_IRQ : (needs_operand ? S_OPR : S_EXEC)
 //      S_IRQ    -> S_FETCH             (pushes the PC and jumps to the vector)
-//      S_OPR    -> (prefixed and subop 7/8) ? S_OPR2 : S_EXEC
+//      S_OPR    -> (prefixed and subop 7/8/F) ? S_OPR2 : S_EXEC
 //      S_OPR2   -> S_EXEC              (3rd byte of LDW/STW)
 //      S_EXEC   -> (IN ? S_IN : ADCW/SUBW ? S_EXEC2 : (instr == HLT ? S_HLT : S_FETCH))
 //      S_IN     -> S_FETCH              (IN: capture in_data)
@@ -51,6 +51,7 @@ module control (
     input wire [7:0] instr,    // current instruction (IR register)
     input wire [7:0] fetched,  // byte read from RAM[PC] in this FETCH
     input wire [3:0] xsub,     // subop of a prefixed (0xFA) instruction (byte2[7:4])
+    input wire [3:0] xlo,      // low nibble of byte2 (xop[3:0]) for ALUI rd/op
     input wire       flag_z,
     input wire       flag_c,
     input wire       flag_n,   // N (sign): used by the signed jumps
@@ -186,6 +187,7 @@ module control (
   // HLT is exactly 0xF0: group 0xF includes RET/EI/DI/indirect.
   wire is_hlt = (instr == 8'hF0);
 
+
   // IN has a wait state so that `in_port` is stable before `in_data` is
   // captured: 0xE1 (IN rd, port 0) or the ported form 0xF9.
   wire is_in = (instr == 8'hF9) || ((opcode == OP_OUT) && (rs == 2'b01));
@@ -201,7 +203,7 @@ module control (
 
   always @(posedge clk) begin
     if (rst) state <= S_FETCH;
-    else state <= nstate;
+    else begin state <= nstate; end
   end
 
   // --- Control logic (combinational) ---
@@ -291,7 +293,7 @@ module control (
           // Only LDW/STW (subop 7/8) carry a third byte.  The
           // decision is made from `fetched` in this same state, so no
           // DECODE state is introduced.
-          nstate = (fop == 4'h7 || fop == 4'h8) ? S_OPR2 : S_EXEC;
+          nstate = (fop == 4'h7 || fop == 4'h8 || fop == 4'hF) ? S_OPR2 : S_EXEC;
         end else begin
           opr_ld = 1'b1;  // operand <= RAM[PC]
           // Ported I/O: expose the port while the operand byte is still on
@@ -315,6 +317,7 @@ module control (
       S_EXEC: begin
         ext = is_ext;
 
+        // --- DMA step (0xFB): copy mem[A] -> mem[B], A++, B++ ---
         // --- Extended instructions (prefix 0xFA): decode the subop ---
         if (is_ext) begin
           case (xsub)
@@ -422,6 +425,20 @@ module control (
               alu_sh = 1'b1;
               rf_we = 1'b1;
               pair16_ld = 1'b1;
+            end
+            // ALUI rd,imm : rd <- rd AND/OR/XOR imm  (op in xop[3:2]: 0=AND,1=OR,2=XOR)
+            4'hF: begin
+              sel_imm = 1'b1;
+              rf_we = 1'b1;
+              rf_waddr = xlo[3:2];
+              flags_we = 1'b1;
+              flags_c_we = 1'b1;
+              case (xlo[1:0])
+                2'b00:   alu_op = OP_AND;
+                2'b01:   alu_op = OP_OR;
+                2'b10:   alu_op = OP_XOR;
+                default: alu_op = OP_AND;
+              endcase
             end
             // RETI : return from interrupt (RET + restore flags)
             4'hE: begin
@@ -660,6 +677,8 @@ module control (
       /* verilator coverage_on */
     endcase
   end
+  // (display moved out)
+
 
   assign halted = (state == S_HLT);
 

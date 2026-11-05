@@ -31,8 +31,13 @@ pin 9 = RX).
     acknowledges `rx_ready`);
   - port 2: `OUT` → timer period in milliseconds (0 disables and clears the
     interrupt), `IN` → bit 0: interrupt pending;
-  - port 3: `IN` → console status (bit 0 `rx_ready`, bit 1 `tx_busy`,
-    bit 2 `rx_overrun`, bit 3 `rx_busy`); `OUT` is ignored.
+  - port 3: `OUT` → watchdog period in milliseconds (0 disables and
+    clears the timeout), `IN` → console status (bit 0 `rx_ready`, bit 1
+    `tx_busy`, bit 2 `rx_overrun`, bit 3 `rx_busy`, bit 4 watchdog
+    timeout).
+- **low-power clock gating**: after `HLT` the top freezes the CPU clock
+  (`cpu_clk = clk & (rst | ~halted)`); the peripherals keep their clock and the
+  static design stays live, but the core draws no dynamic power.
 
 ## Pinout
 
@@ -152,6 +157,7 @@ root.
 | `top_pmod.bin` | `pmod.asm` | endless `IN A; OUT A; JMP` loop: the low five bits of the Pmod byte follow the inputs in real time. Open inputs read `0xFF` (all LEDs on); grounding a pin clears its bit. |
 | (build it) | `uart_echo.asm` | prints `CPU8` over the serial port and echoes every received byte back to the host and to the LEDs. Build with `make fpga FPGA_PROG=uart_echo`. |
 | (build it) | `timer.asm` | counts up on the LEDs roughly 20 times per second, driven by the programmable timer interrupt. Build with `make fpga FPGA_PROG=timer`. |
+| (build it) | `monitor.asm` | mini serial monitor: prints `cpu8 monitor`, echoes every byte and answers `H` with `commands: H = help`. Build with `make fpga FPGA_PROG=monitor`. |
 
 `fibonacci.asm` and `euclid.asm` are **simulation demos**, not bitstreams:
 they end in `HLT`, and the top turns all LEDs on at `HLT`, so their final value

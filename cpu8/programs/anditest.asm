@@ -1,0 +1,20 @@
+; anditest.asm — smoke test for ANDI/ORI/XORI
+LDI A, 0xF0
+ANDI A, 0x0F
+OUT A
+LDI A, 0xF0
+ORI A, 0x0F
+OUT A
+LDI A, 0xFF
+XORI A, 0xFF
+OUT A
+LDI A, 0xAA
+ANDI A, 0x55
+OUT A
+LDI A, 0xAA
+ORI A, 0x55
+OUT A
+LDI A, 0xAA
+XORI A, 0x55
+OUT A
+HLT

@@ -18,6 +18,34 @@ Changes are grouped under *Unreleased* until a tag is cut.
   `programs/uart_echo.asm` and `programs/timer.asm`. New testbenches:
   `uart_tx_tb`, `uart_rx_tb`, `timer_tb`, `top_uart_tb`, `top_timer_tb`.
 - **I/O port map documented** in `docs/ISA.md` §10.9 and `docs/FPGA.md`.
+- **New standalone peripherals**: `rtl/spi_master.v` (SPI mode 0, MSB-first,
+  8-bit, parameter `DIV`), `rtl/watchdog.v` (programmable millisecond watchdog
+  with a level interrupt) and `rtl/i2c_master.v` (single-byte I2C master with
+  open-drain `sda`/`scl`), each with a testbench (`spi_tb`, `watchdog_tb`,
+  `i2c_master_tb`). On the board the watchdog is programmed through port 3 and
+  shares the CPU interrupt line with the timer.
+- **Bit-immediate instructions `ANDI`, `ORI`, `XORI`** (prefixed `0xFA`,
+  sub-operation `0xF`, three bytes). RTL (`control.v`/`cpu.v`), ISS,
+  disassembler, assembler and `docs/OPCODES.md` are updated; verified by
+  `programs/anditest.asm`.
+- **Assembler macros and includes**: `.include "file"` (relative to the source
+  file, recursive) and `.macro` / `.endmacro` with `\param` and `\1..\9`
+  substitution. Documented in `docs/ISA.md`.
+- **Mini serial monitor** (`programs/monitor.asm`): prints a banner, echoes every
+  received byte and answers `H` with a help line. Covered end-to-end by
+  `tb/top_monitor_tb.v`, which sends `H` over the UART and checks the reply.
+- **Low-power clock gating**: once the CPU reaches `HLT`, `fpga/top.v` freezes
+  its clock (`cpu_clk = clk & (rst | ~halted)`), reducing dynamic power while
+  the peripherals keep running.
+- **Formal properties for the timer** (`formal/timer.sby` / `timer_fv.sv`):
+  zero period disables the interrupt, a write clears it and it is sticky
+  otherwise. The control proof was updated for the three-byte ALU-immediate
+  group.
+
+### Changed
+
+- **CI test matrix**: the `test` job now runs on both `ubuntu-22.04` and
+  `ubuntu-24.04` (`fail-fast: false`) to catch Verilator differences.
 
 ### Changed
 

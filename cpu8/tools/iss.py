@@ -42,6 +42,7 @@ XOP_LDW, XOP_STW = 0x7, 0x8
 XOP_TEST, XOP_PUSHF, XOP_POPF = 0x9, 0xA, 0xB
 XOP_ADCW, XOP_SUBW = 0xC, 0xD
 XOP_RETI = 0xE
+XOP_ALUI = 0xF
 
 # FSM state encodings (same as rtl/control.v; documentation only: the ISS is
 # not cycle-accurate).
@@ -68,7 +69,7 @@ def instruction_length(mem: list[int], pc: int) -> int:
     instr = mem[pc & MASK]
     if instr == 0xFA:
         xb = mem[(pc + 1) & MASK]
-        return 3 if (xb >> 4) in (XOP_LDW, XOP_STW) else 2
+        return 3 if (xb >> 4) in (XOP_LDW, XOP_STW, XOP_ALUI) else 2
     return 2 if needs_operand(instr) else 1
 
 
@@ -204,7 +205,7 @@ class ISS:
             # byte2 is the extended sub-operation, not the operand.
             self.xop = self.mem[self.PC]
             self.PC = (self.PC + 1) & MASK
-            if (self.xop >> 4) in (XOP_LDW, XOP_STW):
+            if (self.xop >> 4) in (XOP_LDW, XOP_STW, XOP_ALUI):
                 self.operand = self.mem[self.PC]  # byte3 = displacement
                 self.PC = (self.PC + 1) & MASK
         elif needs_operand(instr):
@@ -279,6 +280,21 @@ class ISS:
                 self.SP = (self.SP + 1) & MASK
                 self.PC = self.mem[self.SP]
                 self.fc, self.fz, self.fn, self.fv = self.flags_saved
+            elif xop == XOP_ALUI:  # ALUI rd,imm : rd <- rd AND/OR/XOR imm
+                rd = (self.xop >> 2) & 0x3
+                op = self.xop & 0x3
+                imm = self.operand
+                if op == 0:
+                    y, c, v, z, n = alu(AND, 0, self.regs[rd], imm, self.fc)
+                elif op == 1:
+                    y, c, v, z, n = alu(OR, 0, self.regs[rd], imm, self.fc)
+                elif op == 2:
+                    y, c, v, z, n = alu(XOR, 0, self.regs[rd], imm, self.fc)
+                else:
+                    y, c, v, z, n = alu(AND, 0, self.regs[rd], imm, self.fc)
+                self.regs[rd] = y
+                self.fz, self.fn, self.fv = z, n, v
+                self.fc = c
             elif xop in (XOP_ADCW, XOP_SUBW):
                 # 16-bit pair op in two steps, mirroring S_EXEC + S_EXEC2:
                 # low byte first (carry captured in c), then the high bytes
@@ -375,7 +391,6 @@ class ISS:
             elif instr == 0xF9:  # IN n,rd (port n)
                 d, n = (opnd >> 2) & 3, opnd & 3
                 reg[d] = self.in_fn(n)
-            # 0xFB..0xFF (and reserved 0xFA subops): no-op
             # 0xFA itself is decoded above, in the `if ext:` branch.
 
         row = (

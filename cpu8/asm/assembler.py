@@ -163,6 +163,7 @@ XOP_POPF: Final = 0xB  # POPF               (no operands)
 XOP_ADCW: Final = 0xC  # ADCW pr, ps        (16-bit pair, 2 EXEC cycles)
 XOP_SUBW: Final = 0xD  # SUBW pr, ps        (16-bit pair, 2 EXEC cycles)
 XOP_RETI: Final = 0xE  # RETI               (return from interrupt)
+XOP_ALUI: Final = 0xF  # ALUI rd,imm        (ANDI/ORI/XORI)
 
 # Instructions that take a second byte (immediate or address).
 DOS_BYTES: Final[set[str]] = {
@@ -193,7 +194,7 @@ DOS_BYTES: Final[set[str]] = {
 } | set(CONDICIONES)
 
 # Prefixed instructions that also take a third byte (indexed displacement).
-TRES_BYTES: Final[set[str]] = {"LDW", "STW"}
+TRES_BYTES: Final[set[str]] = {"LDW", "STW", "ANDI", "ORI", "XORI"}
 
 # All valid mnemonics.
 MNEMONICOS: Final[set[str]] = (
@@ -238,6 +239,9 @@ MNEMONICOS: Final[set[str]] = (
         "ADCW",
         "SUBW",
         "RETI",
+        "ANDI",
+        "ORI",
+        "XORI",
     }
     | set(OPCODE_ALU)
     | set(CONDICIONES)
@@ -675,6 +679,14 @@ def codificar(
         xop = XOP_LDW if mnem == "LDW" else XOP_STW
         return [OP_EXT, (xop << 4) | (rd << 2) | rs, off]
 
+    if mnem in ("ANDI", "ORI", "XORI"):
+        # ALU immediate (3 bytes): 0xFA, (0xF<<4)|(rd<<2)|op, imm.
+        exigir_operandos(num_linea, mnem, operandos, 2)
+        rd = indice_registro(operandos[0], num_linea)
+        imm = resolver_valor(resolver, operandos[1], num_linea)
+        op = {"ANDI": 0, "ORI": 1, "XORI": 2}[mnem]
+        return [OP_EXT, (0xF << 4) | (rd << 2) | op, imm]
+
     if mnem in ("OUT", "IN"):
         # Register form (1 byte): OUT rd = 0xE0|(rd<<2); IN rd = the same |01.
         if len(operandos) == 1:
@@ -822,17 +834,146 @@ def _comprobar_rango16(bruto: int, num_linea: int) -> int:
 # ============================================================================
 
 
+def _preprocesar(texto_fuente: str, base_dir: str | None = None) -> str:
+    """Expands ``.include`` and ``.macro``/``.endmacro`` directives.
+
+    Returns the fully expanded source text.  Macro expansion is textual and
+    may collide on labels if a macro is used more than once (documented
+    limitation); includes are resolved relative to ``base_dir``.
+    """
+    if base_dir is None:
+        base_dir = "."
+    macros: dict[str, tuple[list[str], list[str]]] = {}
+
+    def _expandir(texto: str, bdir: str, depth: int) -> str:
+        if depth > 16:
+            raise AssemblerError(0, "too much recursion in .include/.macro")
+        lineas = texto.splitlines()
+        # Pass 1: collect macro definitions and expand includes.
+        raw: list[str] = []
+        i = 0
+        n = len(lineas)
+        while i < n:
+            code = lineas[i].split(";", 1)[0].strip()
+            toks = code.split()
+            if toks and toks[0].upper() == ".INCLUDE":
+                m = re.search(r'"([^"]+)"', code)
+                if not m:
+                    raise AssemblerError(i + 1, ".include expects a quoted path")
+                path = m.group(1)
+                if not os.path.isabs(path):
+                    path = os.path.join(bdir, path)
+                try:
+                    with open(path, encoding="utf-8-sig") as f:
+                        inc = f.read()
+                except OSError as e:
+                    raise AssemblerError(i + 1, f"cannot read include '{path}': {e}")
+                inc_exp = _expandir(inc, os.path.dirname(path) or ".", depth + 1)
+                raw.extend(inc_exp.splitlines())
+                i += 1
+                continue
+            if toks and toks[0].upper() == ".MACRO":
+                if len(toks) < 2:
+                    raise AssemblerError(i + 1, ".macro expects a name")
+                nombre = toks[1].upper()
+                param_str = " ".join(toks[2:])
+                params = [p.strip() for p in param_str.split(",") if p.strip()]
+                body: list[str] = []
+                i += 1
+                while i < n:
+                    bcode = lineas[i].split(";", 1)[0].strip()
+                    btoks = bcode.split()
+                    if btoks and btoks[0].upper() in (".ENDMACRO", ".ENDM"):
+                        break
+                    body.append(lineas[i])
+                    i += 1
+                if i >= n:
+                    raise AssemblerError(i, "missing .endmacro")
+                i += 1
+                macros[nombre] = (params, body)
+                continue
+            raw.append(lineas[i])
+            i += 1
+
+        # Pass 2: expand macro invocations (repeat until stable).
+        def _expand_once(lines_in: list[str]) -> tuple[list[str], bool]:
+            out: list[str] = []
+            changed = False
+            for line in lines_in:
+                code = line.split(";", 1)[0].strip()
+                label_part = ""
+                rest = code
+                if ":" in code:
+                    idxc = code.find(":")
+                    label_part = code[: idxc + 1]
+                    rest = code[idxc + 1 :].strip()
+                toks = rest.split()
+                mnem = toks[0].upper() if toks else ""
+                if mnem in macros:
+                    params, body = macros[mnem]
+                    arg_str = rest[len(toks[0]) :].strip() if toks else ""
+                    args = [a.strip() for a in arg_str.split(",")] if arg_str != "" else []
+                    args = [a for a in args]  # keep empties? drop trailing empties
+                    # drop a single trailing empty from trailing comma
+                    while len(args) > len(params) and args and args[-1] == "":
+                        args.pop()
+                    param_map = {}
+                    for ip, p in enumerate(params):
+                        param_map[p] = args[ip] if ip < len(args) else ""
+                    for bi, bline in enumerate(body):
+                        # protect quoted strings
+                        strings: list[str] = []
+
+                        def protect(m):
+                            strings.append(m.group(0))
+                            return f"\x00STR{len(strings) - 1}\x00"
+
+                        eline = re.sub(r'"(?:[^"\\]|\\.)*"', protect, bline)
+
+                        def repl(m):
+                            name = m.group(1)
+                            if name in param_map:
+                                return param_map[name]
+                            if name.isdigit():
+                                k = int(name)
+                                if 1 <= k <= len(args):
+                                    return args[k - 1]
+                            return m.group(0)
+
+                        eline = re.sub(r"\\([A-Za-z_]\w*|\d+)", repl, eline)
+                        for si, s in enumerate(strings):
+                            eline = eline.replace(f"\x00STR{si}\x00", s)
+                        if label_part and bi == 0:
+                            eline = label_part + " " + eline
+                        out.append(eline)
+                    changed = True
+                    continue
+                out.append(line)
+            return out, changed
+
+        cur = raw
+        for _ in range(16):
+            cur, ch = _expand_once(cur)
+            if not ch:
+                break
+        return "\n".join(cur)
+
+    return _expandir(texto_fuente, base_dir, 0)
+
+
 def ensamblar(
     texto_fuente: str,
+    base_dir: str | None = None,
 ) -> tuple[list[int], dict[str, int], list[tuple[int, list[int], str]]]:
     """Assembles the text and returns ``(bytes, labels, listing)``.
 
-    ``listado``: list of ``(address, [bytes], original_text)`` per
-    instruction or directive.  Raises :class:`AssemblerError` on any problem.
+    ``base_dir`` is used to resolve ``.include`` paths.
     """
+    texto_fuente = _preprocesar(texto_fuente, base_dir)
     # A UTF-8 BOM (e.g. if the source was saved with a BOM) is not part of the
     # code: it is discarded so as not to corrupt the first mnemonic.
     texto_fuente = texto_fuente.removeprefix("\ufeff")
+    # ... rest unchanged
 
     lineas = texto_fuente.splitlines()
     crudas: list[tuple[int, str | None, str | None, list[str], str]] = []
@@ -1080,7 +1221,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 1
 
     try:
-        salida, etiquetas, listado = ensamblar(texto)
+        base_dir = os.path.dirname(os.path.abspath(args.fuente))
+        salida, etiquetas, listado = ensamblar(texto, base_dir=base_dir)
     except AssemblerError as e:
         print(f"Assembly error in {args.fuente}, {e}", file=sys.stderr)
         if 1 <= e.num_linea <= len(texto.splitlines()):

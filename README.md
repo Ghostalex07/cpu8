@@ -68,7 +68,7 @@ make pytools     # pytest: assembler, ISA table, disassembler, ISS, debugger, FP
 make vlint       # Verilator -Wall analysis of the RTL (must be clean)
 make verilator   # C++ co-simulation of the whole processor
 make coverage    # Verilator line and toggle/branch coverage of the RTL
-make formal      # SymbiYosys proofs of the ALU, FSM, PC and register file
+make formal      # SymbiYosys proofs of the ALU, FSM, PC, register file, timer and UART TX
 make fpga-check  # FPGA synthesis + area/timing budget
 make fpga-repro  # fpga-check + verify the committed bitstream SHA-256
 make release-assets  # build the release bitstreams and their checksums
@@ -185,9 +185,11 @@ The project relies on several layers of checking, all runnable locally:
 - **Formal verification** (`make formal`): SymbiYosys proves, with the `z3`
   solver, that the ALU matches an exhaustive reference model for every
   operation/operand (result and all four flags), that the control FSM only
-  follows its documented state transitions, and that the program counter and
-  register file honour their reset, load/write and hold rules. The `formal/`
-  directory holds the `.sby` and `_fv.sv` files; the job runs in CI too.
+  follows its documented state transitions, that the program counter and
+  register file honour their reset, load/write and hold rules, and that the
+  timer and UART transmitter respect their interrupt/frame contracts. The
+  `formal/` directory holds the `.sby` and `_fv.sv` files; the job runs in CI
+  too.
 - **Coverage** of the RTL with `make coverage`: Verilator instruments a separate
   build (`--coverage`), runs every demo program and merges the runs into an
   annotated report (line, toggle, branch and FSM-state coverage) under

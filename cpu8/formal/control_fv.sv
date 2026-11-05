@@ -189,9 +189,10 @@ module control_fv (
                 end
             end
 
-            // S_OPR: prefixed LDW/STW (subop 7/8) need a third byte, else EXEC.
+            // S_OPR: prefixed LDW/STW (subop 7/8) and the ALU-immediate group
+            // (subop F) need a third byte, else EXEC.
             if (state_obs == S_OPR) begin
-                if (is_ext && (fop == 4'h7 || fop == 4'h8))
+                if (is_ext && (fop == 4'h7 || fop == 4'h8 || fop == 4'hF))
                     assert (nstate_obs == S_OPR2);
                 else
                     assert (nstate_obs == S_EXEC);

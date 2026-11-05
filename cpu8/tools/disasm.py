@@ -51,6 +51,7 @@ _XOP_POPF = 0xB
 _XOP_ADCW = 0xC
 _XOP_SUBW = 0xD
 _XOP_RETI = 0xE
+_XOP_ALUI = 0xF
 _RE_HEX = re.compile(r"[0-9A-Fa-f]{1,2}")
 
 
@@ -131,6 +132,12 @@ def _decodificar_ext(mem: list[int], i: int) -> tuple[str, int]:
         return f"STW {REGS[rd]}, [{REGS[rs]}{_offset(off)}]", 3
     if xop == _XOP_TEST:
         return f"TEST {REGS[rd]}, {REGS[rs]}", 2
+    if xop == _XOP_ALUI:
+        rd = (xb >> 2) & 0x3
+        op = xb & 0x3
+        m = {0: "ANDI", 1: "ORI", 2: "XORI", 3: "ANDI"}.get(op)
+        if m is not None:
+            return f"{m} {REGS[rd]}, {off}", 3
     return f".db 0xFA, 0x{xb:02X}", 2
 
 
@@ -144,7 +151,7 @@ def _longitud(mem: list[int], i: int) -> int:
         return 1
     if b == 0xFA:
         xb = mem[i + 1] if i + 1 < len(mem) else 0
-        return 3 if (xb >> 4) in (_XOP_LDW, _XOP_STW) else 2
+        return 3 if (xb >> 4) in (_XOP_LDW, _XOP_STW, _XOP_ALUI) else 2
     return 2 if 0xF4 <= b <= 0xF9 else 1
 
 

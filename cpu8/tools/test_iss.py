@@ -466,7 +466,7 @@ def test_irq_a_nivel_alto_no_se_retoma_tras_reti() -> None:
 
 # pmod.asm is an endless hardware demo (no .ref); top_pmod_tb covers it.
 PROGRAMAS = sorted(
-    p for p in PROG_DIR.glob("*.asm") if p.stem not in {"pmod", "uart_echo", "timer"}
+    p for p in PROG_DIR.glob("*.asm") if p.stem not in {"pmod", "uart_echo", "timer", "monitor"}
 )
 
 

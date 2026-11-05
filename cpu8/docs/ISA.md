@@ -370,6 +370,8 @@ make sim  PROG=programs/demo                          # assemble and simulate
 | `.db item, ...`    | Emits bytes: numbers, labels or strings `"..."` (ASCII).              |
 | `.dw item, ...`    | Emits 16-bit little-endian words: numbers, labels or constants (2 bytes per item; no strings). |
 | `.nostack`         | Declares that the program never uses the stack, allowing the image to extend into the stack area. |
+| `.include "file"`  | Textually includes another source file (resolved relative to the including file). |
+| `.macro NAME p1,..`| Defines a reusable block; invoke as `NAME arg,...`. Parameters are substituted with `\\p` inside the body (quoted strings are protected). End with `.endmacro` (or `.endm`). |
 
 Expressions are one or more *terms* joined by `+`/`-`; a term is a number, a
 label or a constant (for example `[base+3]` or `LEDS+1`). Every use in an 8-bit
@@ -560,6 +562,13 @@ the address register with `INC`). Byte 2 packs the `rd` and `rs` indices.
   arithmetic state. `I` is **not** restored: it stays `0` after `RETI` (the
   handler must `EI` again if it wants further interrupts), which avoids
   immediately re-entering the handler when `IRQ` is still asserted.
+- **Nested interrupts.** `RETI` does not modify `I`, so a handler that first
+  clears the source (for example by re-arming the timer) and then executes `EI`
+  re-enables interrupts while it is still running: a later request from another
+  source (timer or watchdog) can preempt it, and the inner `RETI` returns to the
+  outer handler. Clearing the source before `EI` is what prevents the level
+  request from re-entering immediately. Handlers used this way must save the
+  registers they share, because the inner handler runs on the same stack.
 - The handler must still save/restore with `PUSH`/`POP` the registers it uses,
   and the vector address must be reserved in the program.
 

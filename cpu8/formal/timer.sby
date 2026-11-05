@@ -1,0 +1,22 @@
+[options]
+mode bmc
+depth 16
+
+[engines]
+smtbmc z3
+
+[script]
+read_verilog -formal rtl/timer.v timer_fv.sv
+hierarchy -top timer_fv
+proc
+flatten
+# Yosys cannot reference signals inside a submodule, so after flattening the
+# timer registers are wired to the observation ports used by the assertions.
+cd timer_fv
+connect -set period_obs dut.period_r
+connect -set ms_obs dut.ms
+prep -top timer_fv
+
+[files]
+rtl/timer.v ../rtl/timer.v
+timer_fv.sv timer_fv.sv

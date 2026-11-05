@@ -23,7 +23,7 @@ The datapath lives mainly in `rtl/cpu.v`. Key elements:
 - **Regfile** (`rtl/regfile.v`): bank with 4 registers A,B,C,D. 2 combinational read ports, **2** synchronous write ports with `we`/`we2` (the second one is used by `SWAP rd,rs` to write both registers in the same cycle).
 - **ALU** (`rtl/alu.v`): combinational arithmetic-logic unit. Produces the result and the `Z`, `C`, `N`, `V` flags. It has a `cin` input (the carry/borrow for `ADC`/`SBC` and the bit rotated in by `ROL`/`ROR`, wired to flag `C`, or to the low-byte carry `c16` while executing the high byte of `ADCW`/`SUBW`).
 - **RAM** (`rtl/ram.v`): 256x8 memory. **Synchronous** write with `we` and read **registered on the falling edge** (`mem[addr] → rdata`). Because the data is available mid-cycle, the datapath (which registers on `posedge`) sees it in the same cycle, while the memory can be mapped to **BRAM** (SB_RAM40_4K) instead of distributed logic. Supports `$readmemh` in simulation and initialization for FPGA synthesis.
-- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `xop` (byte 2 of a prefixed `0xFA` instruction, i.e. the extended opcode + register indices), `c16`/`z16` (carry/zero captured from the low byte of the 16-bit pair operations), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports). On the iCEstick, `in_data` is the port mux in `fpga/top.v`: port 0 reads the eight data pins of the Pmod connector (internal pull-ups, synchronized to the clock), port 1 the last UART byte received, port 2 the timer pending bit and port 3 the console status. The top also drives the LEDs from port 0, the UART (pins 8/9) and the timer interrupt.
+- **Internal registers**: `IR` (instruction register), `operand` (auxiliary byte for 2-byte instructions), `xop` (byte 2 of a prefixed `0xFA` instruction, i.e. the extended opcode + register indices), `c16`/`z16` (carry/zero captured from the low byte of the 16-bit pair operations), `flags` (Z,C,N,V), `SP` (stack pointer), `OUT` (output to LEDs/monitor; the CPU also exposes `out_port`, `in_data` and `in_port` for 4 selectable I/O ports). On the iCEstick, `in_data` is the port mux in `fpga/top.v`: port 0 reads the eight data pins of the Pmod connector (internal pull-ups, synchronized to the clock), port 1 the last UART byte received, port 2 the timer pending bit and port 3 the console status (bit 4 = watchdog timeout). The top also drives the LEDs from port 0, the UART (pins 8/9), the timer and watchdog interrupts. Two additional standalone peripheral modules are provided and verified in `rtl/`: `spi_master.v` (SPI mode 0, MSB-first, 8-bit, parameter `DIV`) and `watchdog.v` (programmable watchdog with millisecond period).
 - **Buses**: `addr`, `data_in`, `data_out`, control signals from `control.v`.
 
 ## Control unit (FSM)
@@ -130,8 +130,11 @@ See `programs/callret.asm`, `programs/stack.asm` with their `.ref`.
   `C,Z,N,V` flags saved when the interrupt was taken)
 - **Formal**: `make formal` runs SymbiYosys (`formal/*.sby`): the ALU is proven
   equivalent to a reference model for all operations and operands, the FSM is
-  proven to stay within its 8 documented states, and the PC/register file are
-  checked against their reset, load/write and hold rules with BMC
+  proven to stay within its 8 documented states, the PC/register file are
+  checked against their reset, load/write and hold rules with BMC, the timer is
+  proven to keep its interrupt disabled at period 0 and sticky until a write,
+  and the UART transmitter is proven to idle high, accept a start only when
+  idle and finish every frame within ten bit periods
 - **Verilator**: `tb/verilator/cpu_sim.v` + `sim_main.cpp` load a `.hex` and compare with the `.ref`; with `--coverage` (`make coverage`) a separate instrumented model is built and the demo runs are merged into an annotated report
 - **Directed**: `cpu_directed_tb.v` covers corner cases (CALL/RET, stack, ported I/O, etc.)
 - **Assembler**: `asm/test_assembler.py` (pytest) verifies the instruction-by-instruction encoding; `asm/test_isa_table.py` checks that the ISA table does not drift from the assembler or the disassembler.

@@ -29,9 +29,13 @@ concurrency:
 
 jobs:
   test:
-    # Pinned to 24.04 (not ubuntu-latest) so the runner does not change the
-    # iverilog/verilator version unexpectedly when ubuntu-latest migrates to 26.
-    runs-on: ubuntu-24.04
+    # Matrix over the two LTS runners so the suite is exercised against two
+    # different iverilog/verilator toolchain versions (matrix = "Verilator CI").
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 10
 
     # The project Makefile is in cpu8/, not at the repository root.

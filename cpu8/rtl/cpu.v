@@ -103,6 +103,7 @@ module cpu #(
       .instr(instr),
       .fetched(ram_rdata),
       .xsub(xop[7:4]),
+      .xlo(xop[3:0]),
       .flag_z(flag_z),
       .flag_c(flag_c),
       .flag_n(flag_n),
@@ -192,6 +193,7 @@ module cpu #(
   // ------------------------------------------------------------------
   wire [1:0] io_port = io_op_fetch ? ram_rdata[1:0] : io_op ? operand[1:0] : 2'b00;
   assign in_port  = io_port;
+
   //  `sel_in` is only high in S_IN, the cycle in which `in_data` is written
   //  to rd.  It doubles as the peripheral read strobe (e.g. to acknowledge a
   //  received UART byte), so no extra state is needed in the control unit.
@@ -217,7 +219,8 @@ module cpu #(
 
   assign ram_wdata = sel_ram_fl ? flags_byte :
                        sel_ram_rs ? rf_rdata_rs
-                     : (sel_ram_pc ? pc_q : rf_rdata_rd);
+                     : (sel_ram_pc ? pc_q
+                     : rf_rdata_rd);
 
   ram u_ram (
       .clk(clk),

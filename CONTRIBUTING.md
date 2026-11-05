@@ -50,7 +50,7 @@ make difftest-long # long fuzz (default COUNT=10000, SEED=...; CI nightly/manual
 make regress       # byte + trace regression + round-trip fuzzing
 make verilator     # C++ co-simulation (requires verilator)
 make coverage      # Verilator coverage report of the RTL (requires verilator)
-make formal        # SymbiYosys proofs of the ALU and the FSM (requires yowasp-yosys + z3)
+make formal        # SymbiYosys proofs of the ALU, FSM, PC, register file, timer and UART TX (requires yowasp-yosys + z3)
 make fpga          # iCEstick synthesis + bitstream (requires the FPGA tools)
 make fpga-check    # fpga + area/timing budget check (tools/fpga_report.py)
 make fmt           # format the Verilog sources with Verible (pip install verible==0.0.4071.0)

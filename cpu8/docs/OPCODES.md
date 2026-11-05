@@ -154,3 +154,6 @@ The flags appearing in the *Flags* column are those that the instruction **modif
 | `ADCW` | `0xFA 0xC2` — `0xFA ; byte2 = (0xC<<4) + (pr<<2) + ps ; 2 EXEC cycles` | 2 | pr, ps | Z C N V | 16-bit pair add: pair pr <- pair pr + pair ps + C, where the pair is (low, low\|1): A=A:B, C=C:D (Z = 16-bit zero; 4 cycles). |
 | `SUBW` | `0xFA 0xD2` — `0xFA ; byte2 = (0xD<<4) + (pr<<2) + ps ; 2 EXEC cycles` | 2 | pr, ps | Z C N V | 16-bit pair subtract: pair pr <- pair pr - pair ps - C (C=1 means no borrow; Z = 16-bit zero; 4 cycles). |
 | `RETI` | `0xFA 0xE0` — `0xFA ; byte2 = (0xE<<4)` | 2 | — | Z C N V | Return from interrupt: pop the return PC (like RET) and restore the arithmetic flags (C, Z, N, V) saved when the interrupt was taken.  Flag I stays cleared (use EI to re-enable interrupts). |
+| `ANDI` | `0xFA 0xF0 0x05` — `0xFA ; byte2 = (0xF<<4) | (0<<2) | rd ; byte3 = imm ; rd <- rd AND imm` | 3 | rd, imm | Z N (C=0, V=0) | AND immediate: rd <- rd AND imm (flags Z, N; C=0, V=0). |
+| `ORI` | `0xFA 0xF1 0x05` — `0xFA ; byte2 = (0xF<<4) | (rd<<2) | 1 ; byte3 = imm ; rd <- rd OR imm` | 3 | rd, imm | Z N (C=0, V=0) | OR immediate: rd <- rd OR imm (flags Z, N; C=0, V=0). |
+| `XORI` | `0xFA 0xF2 0x05` — `0xFA ; byte2 = (0xF<<4) | (rd<<2) | 2 ; byte3 = imm ; rd <- rd XOR imm` | 3 | rd, imm | Z N (C=0, V=0) | XOR immediate: rd <- rd XOR imm (flags Z, N; C=0, V=0). |

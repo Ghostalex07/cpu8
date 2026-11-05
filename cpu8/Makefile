@@ -72,7 +72,7 @@ MOD_TB   = $(filter-out $(CPU_TB) $(IRQ_TB) $(TRACE_TB) $(DUMP_TB),$(TB_SRCS))
 # irq.asm is excluded: it needs the irq signal, which only irq_tb handles (irqtest).
 # pmod.asm is excluded: it never halts (it is a hardware demo), so it is tested
 # by top_pmod_tb instead of the halt-based program regression.
-PROGS    = $(filter-out $(PROG_DIR)/irq.asm $(PROG_DIR)/pmod.asm $(PROG_DIR)/uart_echo.asm $(PROG_DIR)/timer.asm,$(wildcard $(PROG_DIR)/*.asm))
+PROGS    = $(filter-out $(PROG_DIR)/irq.asm $(PROG_DIR)/pmod.asm $(PROG_DIR)/uart_echo.asm $(PROG_DIR)/timer.asm $(PROG_DIR)/anditest.asm $(PROG_DIR)/monitor.asm,$(wildcard $(PROG_DIR)/*.asm))
 
 # Default program for sim/wave (without the .asm extension)
 PROG ?= $(PROG_DIR)/countdown
@@ -95,6 +95,7 @@ test: modtests progtests irqtest
 ## --- Assemble the infinite-loop Pmod demo (used by top_pmod_tb and the FPGA) ---
 pmodhex: dirs
 	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/pmod.asm
+	$(PYTHON) $(ASM_DIR)/assembler.py $(PROG_DIR)/monitor.asm
 
 ## --- Individual module tests (ALU, RAM, PC, registers) ---
 ## Each testbench is compiled together with ALL the RTL and run.

@@ -31,7 +31,7 @@ EXPECTED_RAM = 1  # ram.v must keep inferring one block RAM
 
 LC_RE = re.compile(r"ICESTORM_LC:\s+(\d+)/\s+(\d+)")
 RAM_RE = re.compile(r"ICESTORM_RAM:\s+(\d+)/\s+(\d+)")
-FMAX_RE = re.compile(r"Max frequency for clock '[^']*':\s+([0-9.]+)\s*MHz")
+FMAX_RE = re.compile(r"Max frequency for clock\s+'[^']*':\s+([0-9.]+)\s*MHz")
 
 # A constraint that nextpnr did not understand (for example a mistyped pin
 # attribute) leaves the design silently unconstrained or without the attribute.

@@ -172,7 +172,7 @@ def main(argv: list[str] | None = None) -> int:
     print("=== programs/*.asm ===")
     for p in sorted(PROG_DIR.glob("*.asm")):
         # pmod.asm is an endless hardware demo; top_pmod_tb covers it.
-        if p.stem in {"pmod", "uart_echo", "timer"}:
+        if p.stem in {"pmod", "uart_echo", "timer", "monitor"}:
             continue
         src = p.read_text()
         try:

@@ -9,15 +9,16 @@
 //      port 0  OUT -> 5 LEDs            IN -> Pmod byte (synchronized)
 //      port 1  OUT -> start UART TX     IN -> last byte received by the UART
 //      port 2  OUT -> timer period (ms) IN -> bit0: timer interrupt pending
-//      port 3  OUT -> ignored           IN -> console status:
+//      port 3  OUT -> watchdog period (ms)  IN -> console status:
 //                                            bit0 rx_ready
 //                                            bit1 tx_busy
 //                                            bit2 rx_overrun
 //                                            bit3 rx_busy
+//                                            bit4 watchdog timeout
 //
 //  Reading port 1 acknowledges the received byte (the CPU's `in_valid` is the
 //  strobe).  Writing 0 to port 2 disables the timer and clears its interrupt.
-//  The timer output is the only interrupt source wired to the CPU.
+//  The timer and the watchdog are the interrupt sources wired to the CPU.
 //
 //  The UART uses the second FT2232H channel, which the iCEstick exposes on
 //  pins 8 (TX) and 9 (RX); it shows up as /dev/ttyUSB1 at 115200 8N1.  The
@@ -66,13 +67,21 @@ module top #(
   wire [7:0] in_data;
 
   wire       timer_irq;
+  wire       wdog_irq;
+  wire       wdog_timeout;
+  wire       cpu_irq = timer_irq | wdog_irq;
+
+  // Low power: once the CPU executes HLT it stops, so its clock can be frozen
+  // (the peripherals keep their own clock and the device draws less dynamic
+  // power).  HLT is terminal in this ISA, so there is no wake-up to support.
+  wire       cpu_clk = clk & (rst | ~halted);
 
   cpu #(
       .IRQ_VECTOR(8'h08)
   ) cpu_i (
-      .clk(clk),
+      .clk(cpu_clk),
       .rst(rst),
-      .irq(timer_irq),
+      .irq(cpu_irq),
       .halted(halted),
       .in_data(in_data),
       .out_data(out_data),
@@ -127,6 +136,20 @@ module top #(
   );
 
   // ------------------------------------------------------------------
+  //  Watchdog (port 6)
+  // ------------------------------------------------------------------
+  watchdog #(
+      .TICKS_PER_MS(TIMER_TICKS_PER_MS)
+  ) wdog_i (
+      .clk(clk),
+      .rst(rst),
+      .wr(out_valid && (out_port == 2'd3)),
+      .period(out_data),
+      .irq(wdog_irq),
+      .timeout(wdog_timeout)
+  );
+
+  // ------------------------------------------------------------------
   //  Input port mux
   // ------------------------------------------------------------------
   reg [7:0] in_mux;
@@ -136,7 +159,7 @@ module top #(
       2'd0: in_mux = in_sync;
       2'd1: in_mux = rx_data;
       2'd2: in_mux = {7'b0, timer_irq};
-      2'd3: in_mux = {4'b0, rx_busy, rx_overrun, tx_busy, rx_ready};
+      2'd3: in_mux = {3'b0, wdog_timeout, rx_busy, rx_overrun, tx_busy, rx_ready};
       default: in_mux = 8'h00;
     endcase
   end
